@@ -303,12 +303,38 @@ fun ScanBottomSheet(
         containerColor = Color(0xFF161920)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text("PAIR JK BMS DEVICES", style = MaterialTheme.typography.titleMedium, color = Color.White)
-                Text(if (isScanning) "Scanning..." else "Idle", color = Color.Gray, fontSize = 12.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (isScanning) "Scanning..." else "Idle", color = Color.Gray, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    TextButton(onClick = { scanner.startScan() }) {
+                        Text("RESCAN", color = MaterialTheme.colorScheme.secondary, fontSize = 12.sp)
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
+
+            if (devices.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        if (isScanning) "Scanning for nearby JK BMS BLE devices..."
+                        else "No devices found. Tap RESCAN to search.",
+                        color = Color.Gray,
+                        fontSize = 13.sp
+                    )
+                }
+            }
 
             LazyColumn(
                 modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp),

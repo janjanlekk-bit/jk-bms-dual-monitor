@@ -1,4 +1,4 @@
-﻿package com.jkbms.dualmonitor.ble
+package com.jkbms.dualmonitor.ble
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothManager
@@ -84,17 +84,19 @@ class BmsConnectionManager(context: Context) {
     val bms2 = BmsConnection("B2", context, scope)
 
     val totalBankState: StateFlow<TotalBankData> = combine(bms1.bmsState, bms2.bmsState) { b1, b2 ->
-        val totalCurrent = b1.current + b2.current
-        val totalPower = b1.power + b2.power
+        val activeBmsList = listOf(b1, b2).filter { it.voltage > 1.0f }
 
-        val activeVoltages = listOf(b1, b2).filter { it.voltage > 1.0f }.map { it.voltage }
-        val avgVoltage = if (activeVoltages.isNotEmpty()) activeVoltages.average().toFloat() else 0f
+        val totalCurrent = activeBmsList.sumOf { it.current.toDouble() }.toFloat()
+        val totalPower = activeBmsList.sumOf { it.power.toDouble() }.toFloat()
+        val avgVoltage = if (activeBmsList.isNotEmpty()) activeBmsList.map { it.voltage }.average().toFloat() else 0f
 
-        val totalCap = b1.remainingCapacityAh + b2.remainingCapacityAh
+        val totalCap = activeBmsList.sumOf { it.remainingCapacityAh.toDouble() }.toFloat()
         val weightedSoc = if (totalCap > 0f) {
-            (((b1.remainingCapacityAh * b1.soc) + (b2.remainingCapacityAh * b2.soc)) / totalCap).toInt()
+            (activeBmsList.sumOf { (it.remainingCapacityAh * it.soc).toDouble() } / totalCap).toInt()
+        } else if (activeBmsList.isNotEmpty()) {
+            activeBmsList.map { it.soc }.average().toInt()
         } else {
-            ((b1.soc + b2.soc) / 2)
+            0
         }
 
         TotalBankData(

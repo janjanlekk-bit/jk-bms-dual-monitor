@@ -1,4 +1,4 @@
-﻿package com.jkbms.dualmonitor.ui
+package com.jkbms.dualmonitor.ui
 
 import android.Manifest
 import android.os.Build
@@ -53,7 +53,10 @@ class MainActivity : ComponentActivity() {
                     } else {
                         DashboardScreen(
                             manager = manager,
-                            onOpenScan = { showScanSheet = true },
+                            onOpenScan = {
+                                scanner.startScan()
+                                showScanSheet = true
+                            },
                             onInspectCells = { bms -> selectedBmsForCells = bms }
                         )
                     }
@@ -66,12 +69,14 @@ class MainActivity : ComponentActivity() {
                                 showScanSheet = false
                             },
                             onAssignB1 = { addr ->
-                                manager.bms1.connect(addr)
+                                scanner.stopScan()
                                 showScanSheet = false
+                                manager.bms1.connect(addr)
                             },
                             onAssignB2 = { addr ->
-                                manager.bms2.connect(addr)
+                                scanner.stopScan()
                                 showScanSheet = false
+                                manager.bms2.connect(addr)
                             }
                         )
                     }
