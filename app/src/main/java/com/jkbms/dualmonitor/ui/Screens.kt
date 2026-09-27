@@ -1,4 +1,4 @@
-﻿package com.jkbms.dualmonitor.ui
+package com.jkbms.dualmonitor.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -6,8 +6,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -233,7 +231,8 @@ fun CellScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxSize()
         ) {
-            items(bmsData.cells) { cell ->
+            items(bmsData.cells.size) { index ->
+                val cell = bmsData.cells[index]
                 CellCard(
                     cell = cell,
                     isMin = cell.index == bmsData.minCellNumber,
@@ -315,7 +314,8 @@ fun ScanBottomSheet(
                 modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(devices) { dev ->
+                items(devices.size) { index ->
+                    val dev = devices[index]
                     Card(
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF222631)),
                         shape = RoundedCornerShape(8.dp)
