@@ -54,11 +54,23 @@ class BmsConnection(
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
+                    if (status != BluetoothGatt.GATT_SUCCESS) {
+                        scope.launch { logFlow.emit("[$slotId] Connection status error $status") }
+                        updateStatus(ConnectionStatus.ERROR)
+                        cleanupGatt(disconnectFirst = false)
+                        if (shouldReconnect) triggerReconnect()
+                        return
+                    }
                     updateStatus(ConnectionStatus.DISCOVERING_SERVICES)
                     scope.launch(Dispatchers.Main) {
                         logFlow.emit("[$slotId] Connected. Discovering services...")
-                        delay(250)
-                        gatt.discoverServices()
+                        delay(350)
+                        val ok = gatt.discoverServices()
+                        if (!ok) {
+                            logFlow.emit("[$slotId] discoverServices returned false, retrying in 1s...")
+                            delay(1000)
+                            gatt.discoverServices()
+                        }
                     }
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
@@ -66,7 +78,7 @@ class BmsConnection(
                     timeoutJob?.cancel()
                     updateStatus(if (shouldReconnect) ConnectionStatus.RECONNECTING else ConnectionStatus.DISCONNECTED)
                     scope.launch { logFlow.emit("[$slotId] Disconnected (status: $status)") }
-                    cleanupGatt()
+                    cleanupGatt(disconnectFirst = false)
                     if (shouldReconnect) triggerReconnect()
                 }
                 else -> {
@@ -141,21 +153,28 @@ class BmsConnection(
                 timeoutJob?.cancel()
                 updateStatus(ConnectionStatus.CONNECTED)
                 scope.launch {
-                    logFlow.emit("[$slotId] Notifications active. Requesting device info & cell stream...")
+                    logFlow.emit("[$slotId] Notifications active. Connected successfully!")
                 }
 
-                // Start continuous telemetry polling loop
-                pollingJob?.cancel()
-                pollingJob = scope.launch(Dispatchers.IO) {
+                // Send activation handshake ONCE on connection (makes BMS beep once, just like official app)
+                scope.launch(Dispatchers.IO) {
                     delay(300)
                     sendReadCommand(gatt, Jk02Protocol.CMD_REQUEST_DEVICE_INFO)
-                    delay(400)
+                    delay(500)
                     sendReadCommand(gatt, Jk02Protocol.CMD_REQUEST_SETTINGS)
+                    logFlow.emit("[$slotId] Handshake sent. Passive telemetry stream active.")
+                }
 
-                    // Keepalive & Telemetry update poll every 1.5 seconds
+                // Quiet stream watchdog: only if stream is silent for >10s does it request an update
+                pollingJob?.cancel()
+                pollingJob = scope.launch(Dispatchers.IO) {
                     while (isActive && _bmsState.value.connectionStatus == ConnectionStatus.CONNECTED) {
-                        delay(1500)
-                        sendReadCommand(gatt, Jk02Protocol.CMD_REQUEST_SETTINGS)
+                        delay(10000)
+                        val silenceDuration = System.currentTimeMillis() - _bmsState.value.lastUpdate
+                        if (_bmsState.value.lastUpdate > 0 && silenceDuration > 10000) {
+                            logFlow.emit("[$slotId] Stream silent for ${silenceDuration / 1000}s, requesting refresh...")
+                            sendReadCommand(gatt, Jk02Protocol.CMD_REQUEST_SETTINGS)
+                        }
                     }
                 }
             }
@@ -168,7 +187,7 @@ class BmsConnection(
         updateStatus(ConnectionStatus.CONNECTING)
 
         // Reset previous connection before connecting
-        cleanupGatt()
+        cleanupGatt(disconnectFirst = false)
 
         val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         val adapter = bluetoothManager?.adapter
@@ -180,13 +199,13 @@ class BmsConnection(
         val device = adapter.getRemoteDevice(address)
         _bmsState.value = _bmsState.value.copy(macAddress = address, displayName = device.name ?: address)
 
-        // Start connection timeout watchdog (15 seconds)
+        // Start connection timeout watchdog (25 seconds)
         timeoutJob?.cancel()
         timeoutJob = scope.launch {
-            delay(15000)
+            delay(25000)
             if (_bmsState.value.connectionStatus != ConnectionStatus.CONNECTED) {
                 logFlow.emit("[$slotId] Connection timeout. Retrying clean connect...")
-                cleanupGatt()
+                cleanupGatt(disconnectFirst = false)
                 delay(1000)
                 if (shouldReconnect && macAddress != null) {
                     connect(macAddress!!)
@@ -196,14 +215,21 @@ class BmsConnection(
             }
         }
 
+        // Stagger slot B2 connection slightly if both are initiated together to prevent HCI collision
+        val staggerDelay = if (slotId == "B2") 600L else 0L
+
         // Must connect on Main Thread so BluetoothGatt binder callbacks are properly scheduled
-        Handler(Looper.getMainLooper()).post {
-            bluetoothGatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                device.connectGatt(context.applicationContext, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
-            } else {
-                device.connectGatt(context.applicationContext, false, gattCallback)
+        Handler(Looper.getMainLooper()).postDelayed({
+            try {
+                bluetoothGatt = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    device.connectGatt(context.applicationContext, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
+                } else {
+                    device.connectGatt(context.applicationContext, false, gattCallback)
+                }
+            } catch (e: Exception) {
+                updateStatus(ConnectionStatus.ERROR)
             }
-        }
+        }, staggerDelay)
     }
 
     private fun enableNotifications(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
@@ -259,13 +285,15 @@ class BmsConnection(
         shouldReconnect = false
         pollingJob?.cancel()
         timeoutJob?.cancel()
-        cleanupGatt()
+        cleanupGatt(disconnectFirst = true)
         updateStatus(ConnectionStatus.DISCONNECTED)
     }
 
-    private fun cleanupGatt() {
+    private fun cleanupGatt(disconnectFirst: Boolean = false) {
         try {
-            bluetoothGatt?.disconnect()
+            if (disconnectFirst) {
+                bluetoothGatt?.disconnect()
+            }
             bluetoothGatt?.close()
         } catch (e: Exception) {}
         bluetoothGatt = null

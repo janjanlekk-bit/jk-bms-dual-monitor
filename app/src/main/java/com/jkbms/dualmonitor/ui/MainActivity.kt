@@ -64,19 +64,10 @@ class MainActivity : ComponentActivity() {
                     if (showScanSheet) {
                         ScanBottomSheet(
                             scanner = scanner,
+                            manager = manager,
                             onDismiss = {
                                 scanner.stopScan()
                                 showScanSheet = false
-                            },
-                            onAssignB1 = { addr ->
-                                scanner.stopScan()
-                                showScanSheet = false
-                                manager.bms1.connect(addr)
-                            },
-                            onAssignB2 = { addr ->
-                                scanner.stopScan()
-                                showScanSheet = false
-                                manager.bms2.connect(addr)
                             }
                         )
                     }

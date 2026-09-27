@@ -34,14 +34,28 @@ class BleScanner(private val context: Context) {
     private val scanCallback = object : ScanCallback() {
         @SuppressLint("MissingPermission")
         override fun onScanResult(callbackType: Int, result: ScanResult) {
-            val device = result.device
-            val name = device.name ?: result.scanRecord?.deviceName ?: "Unknown JK"
-            val address = device.address
+            val device = result.device ?: return
+            val rawName = device.name ?: result.scanRecord?.deviceName ?: ""
+            val address = device.address ?: return
             val rssi = result.rssi
 
+            // Match JK BMS by advertised name or service UUID
+            val serviceUuids = result.scanRecord?.serviceUuids?.map { it.uuid.toString().lowercase() } ?: emptyList()
+            val hasJkService = serviceUuids.any { it.contains("ffe0") }
+            val isJkBms = rawName.contains("JK", ignoreCase = true) ||
+                          rawName.contains("BMS", ignoreCase = true) ||
+                          rawName.contains("BD6A", ignoreCase = true) ||
+                          rawName.contains("B2A", ignoreCase = true) ||
+                          hasJkService
+
+            // Only show relevant devices in the picker
+            if (!isJkBms && rawName.isBlank()) return
+
+            val displayName = if (rawName.isNotBlank()) rawName else "JK BMS ($address)"
+
             val current = _devices.value.toMutableList()
-            val index = current.indexOfFirst { it.address == address }
-            val item = DiscoveredDevice(name, address, rssi)
+            val index = current.indexOfFirst { it.address.equals(address, ignoreCase = true) }
+            val item = DiscoveredDevice(displayName, address, rssi)
 
             if (index >= 0) {
                 current[index] = item
@@ -50,29 +64,50 @@ class BleScanner(private val context: Context) {
             }
             _devices.value = current.sortedByDescending { it.rssi }
         }
+
+        override fun onScanFailed(errorCode: Int) {
+            _isScanning.value = false
+        }
     }
 
     @SuppressLint("MissingPermission")
-    fun startScan() {
-        if (_isScanning.value || scanner == null) return
+    fun startScan(clearExisting: Boolean = false) {
+        val leScanner = scanner ?: return
 
-        _devices.value = emptyList()
-        val filter = ScanFilter.Builder()
-            .setServiceUuid(ParcelUuid(Jk02Protocol.SERVICE_UUID))
-            .build()
+        // If a scan was already running, stop it first to ensure a fresh cycle
+        if (_isScanning.value) {
+            try {
+                leScanner.stopScan(scanCallback)
+            } catch (e: Exception) {}
+            _isScanning.value = false
+        }
+
+        if (clearExisting) {
+            _devices.value = emptyList()
+        }
 
         val settings = ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .setScanMode(ScanSettings.SCAN_MODE_BALANCED)
+            .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
+            .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
+            .setNumOfMatches(ScanSettings.MATCH_NUM_MAX_ADVERTISEMENT)
             .build()
 
-        scanner?.startScan(listOf(filter), settings, scanCallback)
-        _isScanning.value = true
+        try {
+            // Null filter so hardware filter doesn't drop packets while connected to peripheral 1
+            leScanner.startScan(null, settings, scanCallback)
+            _isScanning.value = true
+        } catch (e: Exception) {
+            _isScanning.value = false
+        }
     }
 
     @SuppressLint("MissingPermission")
     fun stopScan() {
         if (!_isScanning.value) return
-        scanner?.stopScan(scanCallback)
+        try {
+            scanner?.stopScan(scanCallback)
+        } catch (e: Exception) {}
         _isScanning.value = false
     }
 }

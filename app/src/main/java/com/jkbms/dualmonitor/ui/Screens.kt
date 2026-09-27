@@ -139,7 +139,7 @@ fun BatteryCard(bms: BmsData, title: String, onViewCells: () -> Unit) {
                 Column(horizontalAlignment = Alignment.End) {
                     Text("Temp: ${bms.temperature}°C", color = Color.LightGray, fontSize = 13.sp)
                     Text("Active: ${bms.cells.size}S", color = Color.LightGray, fontSize = 13.sp)
-                    Text("Delta: ${bms.deltaVoltageMv} mV", color = if (bms.deltaVoltageMv > 30) Color(0xFFFF5252) else Color(0xFF69F0AE), fontSize = 13.sp)
+                    Text("Cell Delta: ${bms.deltaVoltageMv} mV", color = if (bms.deltaVoltageMv > 30) Color(0xFFFF5252) else Color(0xFF69F0AE), fontSize = 13.sp)
                 }
             }
 
@@ -291,12 +291,13 @@ fun CellCard(cell: CellData, isMin: Boolean, isMax: Boolean) {
 @Composable
 fun ScanBottomSheet(
     scanner: BleScanner,
-    onDismiss: () -> Unit,
-    onAssignB1: (String) -> Unit,
-    onAssignB2: (String) -> Unit
+    manager: BmsConnectionManager,
+    onDismiss: () -> Unit
 ) {
     val devices by scanner.devices.collectAsState()
     val isScanning by scanner.isScanning.collectAsState()
+    val b1 by manager.bms1.bmsState.collectAsState()
+    val b2 by manager.bms2.bmsState.collectAsState()
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -312,7 +313,7 @@ fun ScanBottomSheet(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(if (isScanning) "Scanning..." else "Idle", color = Color.Gray, fontSize = 12.sp)
                     Spacer(modifier = Modifier.width(8.dp))
-                    TextButton(onClick = { scanner.startScan() }) {
+                    TextButton(onClick = { scanner.startScan(clearExisting = false) }) {
                         Text("RESCAN", color = MaterialTheme.colorScheme.secondary, fontSize = 12.sp)
                     }
                 }
@@ -337,11 +338,14 @@ fun ScanBottomSheet(
             }
 
             LazyColumn(
-                modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(devices.size) { index ->
                     val dev = devices[index]
+                    val isAssignedB1 = b1.macAddress.isNotBlank() && b1.macAddress.equals(dev.address, ignoreCase = true)
+                    val isAssignedB2 = b2.macAddress.isNotBlank() && b2.macAddress.equals(dev.address, ignoreCase = true)
+
                     Card(
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF222631)),
                         shape = RoundedCornerShape(8.dp)
@@ -351,30 +355,44 @@ fun ScanBottomSheet(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
-                                Text(dev.name, color = Color.White, fontSize = 14.sp)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(dev.name, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                                 Text(dev.address, color = Color.Gray, fontSize = 11.sp)
                                 Text("${dev.rssi} dBm", color = Color.LightGray, fontSize = 10.sp)
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Button(
-                                    onClick = { onAssignB1(dev.address) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E88E5)),
+                                    onClick = { manager.bms1.connect(dev.address) },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (isAssignedB1) Color(0xFF1565C0) else Color(0xFF1E88E5)
+                                    ),
                                     shape = RoundedCornerShape(6.dp)
                                 ) {
-                                    Text("B1", fontSize = 12.sp)
+                                    Text(if (isAssignedB1) "B1 (Active)" else "Set B1", fontSize = 11.sp)
                                 }
                                 Button(
-                                    onClick = { onAssignB2(dev.address) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF43A047)),
+                                    onClick = { manager.bms2.connect(dev.address) },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (isAssignedB2) Color(0xFF2E7D32) else Color(0xFF43A047)
+                                    ),
                                     shape = RoundedCornerShape(6.dp)
                                 ) {
-                                    Text("B2", fontSize = 12.sp)
+                                    Text(if (isAssignedB2) "B2 (Active)" else "Set B2", fontSize = 11.sp)
                                 }
                             }
                         }
                     }
                 }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A2F3D)),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("DONE / CLOSE", color = Color.White)
             }
         }
     }
