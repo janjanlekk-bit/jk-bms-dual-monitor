@@ -1,4 +1,4 @@
-﻿package com.jkbms.dualmonitor.model
+package com.jkbms.dualmonitor.model
 
 enum class ConnectionStatus {
     DISCONNECTED, SCANNING, CONNECTING, DISCOVERING_SERVICES, ENABLING_NOTIFICATIONS, CONNECTED, RECONNECTING, ERROR
@@ -37,5 +37,6 @@ data class TotalBankData(
     val voltage: Float = 0f,
     val current: Float = 0f,
     val power: Float = 0f,
-    val capacityWeightedSoc: Int = 0
+    val capacityWeightedSoc: Int = 0,
+    val remainingCapacityAh: Float = 0f
 )

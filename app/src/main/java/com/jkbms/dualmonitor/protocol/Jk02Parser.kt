@@ -79,7 +79,7 @@ object Jk02Parser {
         val rawCurrent = getInt32(data, currentOffset)
         val cFactor = if (vFactor == 0.001f || kotlin.math.abs(rawCurrent * 0.01f) > 500f) 0.001f else 0.01f
         val currentA = rawCurrent * cFactor
-        val powerW = kotlin.math.abs(packVoltage * currentA)
+        val powerW = packVoltage * currentA
 
         // 4. State of Charge (SOC, in %)
         val socCandidates = listOf(

@@ -112,15 +112,24 @@ fun TotalBankCard(bank: TotalBankData) {
                 MetricItem(label = "BUS VOLTAGE", value = String.format("%.2f V", bank.voltage))
                 MetricItem(label = "TOTAL CURRENT", value = String.format("%.1f A", bank.current))
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            val totalPowerDisplay = if (kotlin.math.abs(bank.power) < 1000f) {
-                String.format("%.0f W", bank.power)
+            Spacer(modifier = Modifier.height(10.dp))
+            val absPower = kotlin.math.abs(bank.power)
+            val totalPowerDisplay = if (absPower < 1000f) {
+                val formatted = String.format("%.0f W", absPower)
+                if (bank.power < -0.5f) "-$formatted" else formatted
             } else {
-                String.format("%.2f kW", bank.power / 1000f)
+                val formatted = String.format("%.2f kW", absPower / 1000f)
+                if (bank.power < -0.5f) "-$formatted" else formatted
             }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 MetricItem(label = "TOTAL POWER", value = totalPowerDisplay)
+                MetricItem(label = "REMAINING CAPACITY", value = String.format("%.1f Ah", bank.remainingCapacityAh))
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 MetricItem(label = "WEIGHTED SOC", value = "${bank.capacityWeightedSoc} %")
+                val totalEnergyKwh = (bank.voltage * bank.remainingCapacityAh) / 1000f
+                MetricItem(label = "STORED ENERGY", value = String.format("%.2f kWh", totalEnergyKwh))
             }
         }
     }
@@ -128,10 +137,13 @@ fun TotalBankCard(bank: TotalBankData) {
 
 @Composable
 fun BatteryCard(bms: BmsData, title: String, onViewCells: () -> Unit) {
-    val bmsPowerDisplay = if (kotlin.math.abs(bms.power) < 1000f) {
-        String.format("%.0f W", bms.power)
+    val absBmsPower = kotlin.math.abs(bms.power)
+    val bmsPowerDisplay = if (absBmsPower < 1000f) {
+        val formatted = String.format("%.0f W", absBmsPower)
+        if (bms.power < -0.5f) "-$formatted" else formatted
     } else {
-        String.format("%.2f kW", bms.power / 1000f)
+        val formatted = String.format("%.2f kW", absBmsPower / 1000f)
+        if (bms.power < -0.5f) "-$formatted" else formatted
     }
 
     Card(
@@ -201,9 +213,10 @@ fun CellScreen(
         ) {
             Button(
                 onClick = onBack,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF252B36))
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                shape = RoundedCornerShape(8.dp)
             ) {
-                Text("← DASHBOARD")
+                Text("← DASHBOARD", color = Color.White, fontWeight = FontWeight.Bold)
             }
             Text("${bmsData.displayName} CELLS", style = MaterialTheme.typography.titleMedium, color = Color.White)
         }

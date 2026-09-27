@@ -184,7 +184,8 @@ class BmsConnectionManager(context: Context) {
             voltage = avgVoltage,
             current = totalCurrent,
             power = totalPower,
-            capacityWeightedSoc = weightedSoc.coerceIn(0, 100)
+            capacityWeightedSoc = weightedSoc.coerceIn(0, 100),
+            remainingCapacityAh = totalCap
         )
     }.stateIn(scope, SharingStarted.WhileSubscribed(5000), TotalBankData())
 }
