@@ -17,16 +17,9 @@ object Jk02Parser {
     private fun parseType02(data: ByteArray, current: BmsData): BmsData {
         if (data.size < Jk02Protocol.FRAME_SIZE) return current
 
-        // Auto-detect 24S vs 32S offset:
-        // In 24S (and <=24S like 20S), total voltage is at byte 118. In 32S, it is at byte 134.
-        val testV24 = getUint32(data, 118) * 0.001f
-        val testV32 = getUint32(data, 134) * 0.001f
-        val offset = if (testV24 in 5f..160f) 0 else if (testV32 in 5f..160f) 16 else 0
-
-        val maxCells = if (offset == 16) 32 else 24
+        // 1. Parse individual cell voltages (bytes 6 to 69 in 32S layout, or 6 to 53 in 24S layout)
         val cells = mutableListOf<CellData>()
-
-        for (i in 0 until maxCells) {
+        for (i in 0 until 32) {
             val vOffset = 6 + (i * 2)
             if (vOffset + 1 >= data.size) break
             val rawMv = getUint16(data, vOffset)
@@ -34,8 +27,10 @@ object Jk02Parser {
 
             // Li-ion / LFP cell voltage ranges between 0.5V and 5.0V
             if (voltage in 0.5f..5.0f) {
-                val resOffset = (64 + offset) + (i * 2)
-                val rawRes = if (resOffset + 1 < data.size) getUint16(data, resOffset) else 0
+                // Resistance can be at 80 + 2*i (32S layout) or 64 + 2*i (24S layout)
+                val rawRes32 = if (80 + (i * 2) + 1 < data.size) getUint16(data, 80 + (i * 2)) else 0
+                val rawRes24 = if (64 + (i * 2) + 1 < data.size) getUint16(data, 64 + (i * 2)) else 0
+                val rawRes = if (rawRes32 in 1..65000) rawRes32 else rawRes24
                 val resVal = if (rawRes in 1..65000) rawRes / 1000f else null
 
                 cells.add(
@@ -55,34 +50,95 @@ object Jk02Parser {
         val deltaMv = if (minCell != null && maxCell != null) {
             ((maxCell.voltage - minCell.voltage) * 1000).toInt()
         } else 0
+        val sumV = if (cells.isNotEmpty()) cells.sumOf { it.voltage.toDouble() }.toFloat() else 0f
 
-        // Total Battery Pack Voltage (at byte 118 + offset)
-        val rawPackV = getUint32(data, 118 + offset) * 0.001f
-        val packVoltage = if (rawPackV in 5f..160f) {
-            rawPackV
-        } else if (cells.isNotEmpty()) {
-            cells.sumOf { it.voltage.toDouble() }.toFloat()
-        } else {
-            0f
+        // 2. Identify the active layout base offset (150 for 32S layout, 118 for 24S layout, or 134)
+        // We match candidate pack voltages against sumV (e.g. ~52.75V)
+        val vCandidates = listOf(
+            Triple(150, 0.01f, getUint32(data, 150) * 0.01f),
+            Triple(150, 0.001f, getUint32(data, 150) * 0.001f),
+            Triple(118, 0.01f, getUint32(data, 118) * 0.01f),
+            Triple(118, 0.001f, getUint32(data, 118) * 0.001f),
+            Triple(134, 0.01f, getUint32(data, 134) * 0.01f),
+            Triple(134, 0.001f, getUint32(data, 134) * 0.001f)
+        )
+
+        val bestMatch = vCandidates.firstOrNull { (_, _, v) -> sumV > 0f && kotlin.math.abs(v - sumV) < 2.0f }
+            ?: vCandidates.firstOrNull { (_, _, v) -> v in 10f..160f }
+
+        val baseOffset = bestMatch?.first ?: 150
+        val vFactor = bestMatch?.second ?: 0.01f
+        val packVoltage = if (bestMatch != null && bestMatch.third in 5f..160f) bestMatch.third else sumV
+
+        // 3. Current (signed 32-bit integer at 158 or 126 or 142)
+        val currentOffset = when (baseOffset) {
+            150 -> 158
+            134 -> 142
+            else -> 126
+        }
+        val rawCurrent = getInt32(data, currentOffset)
+        val cFactor = if (vFactor == 0.001f || kotlin.math.abs(rawCurrent * 0.01f) > 500f) 0.001f else 0.01f
+        val currentA = rawCurrent * cFactor
+        val powerW = kotlin.math.abs(packVoltage * currentA)
+
+        // 4. State of Charge (SOC, in %)
+        val socCandidates = listOf(
+            if (baseOffset == 150) 173 else 141,
+            173,
+            141,
+            157,
+            172,
+            174
+        )
+        var foundSoc = 0
+        for (idx in socCandidates) {
+            if (idx < data.size) {
+                val candidateSoc = data[idx].toInt() and 0xFF
+                if (candidateSoc in 1..100) {
+                    foundSoc = candidateSoc
+                    break
+                }
+            }
+        }
+        val soc = if (foundSoc > 0) foundSoc else current.soc
+
+        // 5. Temperatures (0.1 °C)
+        val temp1Offset = when (baseOffset) {
+            150 -> 180
+            134 -> 146
+            else -> 130
+        }
+        val temp2Offset = temp1Offset + 2
+        val mosTempOffset = temp1Offset + 4
+
+        val t1 = getInt16(data, temp1Offset) * 0.1f
+        val t2 = getInt16(data, temp2Offset) * 0.1f
+        val tMos = getInt16(data, mosTempOffset) * 0.1f
+
+        val temperature = when {
+            t1 in -30f..90f && t1 != 0f -> t1
+            t2 in -30f..90f && t2 != 0f -> t2
+            tMos in -30f..90f && tMos != 0f -> tMos
+            getInt16(data, 180) * 0.1f in -30f..90f && getInt16(data, 180) != 0.toShort() -> getInt16(data, 180) * 0.1f
+            getInt16(data, 130) * 0.1f in -30f..90f && getInt16(data, 130) != 0.toShort() -> getInt16(data, 130) * 0.1f
+            else -> if (t1 in -30f..90f) t1 else current.temperature
         }
 
-        // Current (at byte 126 + offset, signed 32-bit int)
-        val rawCurrent = getInt32(data, 126 + offset)
-        val currentA = rawCurrent * 0.001f
-        val powerW = packVoltage * currentA
-
-        // Temperature (at byte 130 and 132 + offset, signed 16-bit int in 0.1 °C)
-        val temp1 = getInt16(data, 130 + offset) * 0.1f
-        val temp2 = getInt16(data, 132 + offset) * 0.1f
-        val temperature = if (temp1 in -40f..100f) temp1 else if (temp2 in -40f..100f) temp2 else 0f
-
-        // State of Charge (SOC) (at byte 141 + offset, 1 byte in %)
-        val rawSoc = if (141 + offset < data.size) data[141 + offset].toInt() and 0xFF else 0
-        val soc = rawSoc.coerceIn(0, 100)
-
-        // Capacity Remaining (at byte 142 + offset, uint32 in 0.001 Ah)
-        val rawCapacity = getUint32(data, 142 + offset) * 0.001f
-        val remainingCapacity = if (rawCapacity > 0f) rawCapacity else current.remainingCapacityAh
+        // 6. Remaining Capacity (Ah)
+        val capOffset = when (baseOffset) {
+            150 -> 174
+            134 -> 158
+            else -> 142
+        }
+        val rawCap = getUint32(data, capOffset)
+        val parsedCap = when {
+            rawCap * 0.001f in 5f..1500f -> rawCap * 0.001f
+            rawCap * 0.01f in 5f..1500f -> rawCap * 0.01f
+            rawCap.toFloat() in 5f..1500f -> rawCap.toFloat()
+            soc > 0 -> 100f * (soc / 100f)
+            else -> current.remainingCapacityAh
+        }
+        val remainingCapacity = if (parsedCap > 0f) parsedCap else 100f
 
         return current.copy(
             voltage = packVoltage,
@@ -102,7 +158,12 @@ object Jk02Parser {
         )
     }
 
-    private fun parseType01(data: ByteArray, current: BmsData): BmsData = current
+    private fun parseType01(data: ByteArray, current: BmsData): BmsData {
+        if (data.size < Jk02Protocol.FRAME_SIZE) return current
+        val rawCap = getUint32(data, 10) * 0.001f
+        val cap = if (rawCap in 10f..2000f) rawCap else current.remainingCapacityAh
+        return current.copy(remainingCapacityAh = cap)
+    }
 
     private fun parseType03(data: ByteArray, current: BmsData): BmsData {
         val rawStr = String(data, Charsets.US_ASCII).filter { it.isLetterOrDigit() || it == '_' || it == '.' || it == '-' }
