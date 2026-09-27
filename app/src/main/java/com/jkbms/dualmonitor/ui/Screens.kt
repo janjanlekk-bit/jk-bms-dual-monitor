@@ -1,5 +1,6 @@
 package com.jkbms.dualmonitor.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -16,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jkbms.dualmonitor.ble.BleScanner
@@ -102,15 +104,26 @@ fun StatusBadge(label: String, status: ConnectionStatus) {
 fun TotalBankCard(bank: TotalBankData) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E232D)),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF14243B)),
+        border = BorderStroke(1.dp, Color(0xFF2979FF).copy(alpha = 0.5f)),
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text("TOTAL BATTERY BANK", style = MaterialTheme.typography.titleMedium, color = Color(0xFF90CAF9), fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(12.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                MetricItem(label = "BUS VOLTAGE", value = String.format("%.2f V", bank.voltage))
-                MetricItem(label = "TOTAL CURRENT", value = String.format("%.1f A", bank.current))
+            Row(modifier = Modifier.fillMaxWidth()) {
+                MetricItem(
+                    label = "BUS VOLTAGE",
+                    value = String.format("%.2f V", bank.voltage),
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.Start
+                )
+                MetricItem(
+                    label = "TOTAL CURRENT",
+                    value = String.format("%.1f A", bank.current),
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.End
+                )
             }
             Spacer(modifier = Modifier.height(10.dp))
             val absPower = kotlin.math.abs(bank.power)
@@ -121,15 +134,35 @@ fun TotalBankCard(bank: TotalBankData) {
                 val formatted = String.format("%.2f kW", absPower / 1000f)
                 if (bank.power < -0.5f) "-$formatted" else formatted
             }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                MetricItem(label = "TOTAL POWER", value = totalPowerDisplay)
-                MetricItem(label = "REMAINING CAPACITY", value = String.format("%.1f Ah", bank.remainingCapacityAh))
+            Row(modifier = Modifier.fillMaxWidth()) {
+                MetricItem(
+                    label = "TOTAL POWER",
+                    value = totalPowerDisplay,
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.Start
+                )
+                MetricItem(
+                    label = "REMAINING CAPACITY",
+                    value = String.format("%.1f Ah", bank.remainingCapacityAh),
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.End
+                )
             }
             Spacer(modifier = Modifier.height(10.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                MetricItem(label = "WEIGHTED SOC", value = "${bank.capacityWeightedSoc} %")
+            Row(modifier = Modifier.fillMaxWidth()) {
+                MetricItem(
+                    label = "WEIGHTED SOC",
+                    value = "${bank.capacityWeightedSoc} %",
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.Start
+                )
                 val totalEnergyKwh = (bank.voltage * bank.remainingCapacityAh) / 1000f
-                MetricItem(label = "STORED ENERGY", value = String.format("%.2f kWh", totalEnergyKwh))
+                MetricItem(
+                    label = "STORED ENERGY",
+                    value = String.format("%.2f kWh", totalEnergyKwh),
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.End
+                )
             }
         }
     }
@@ -189,10 +222,27 @@ fun BatteryCard(bms: BmsData, title: String, onViewCells: () -> Unit) {
 }
 
 @Composable
-fun MetricItem(label: String, value: String) {
-    Column {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-        Text(value, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White, fontFamily = FontFamily.Monospace)
+fun MetricItem(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    horizontalAlignment: Alignment.Horizontal = Alignment.Start
+) {
+    Column(modifier = modifier, horizontalAlignment = horizontalAlignment) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.Gray,
+            textAlign = if (horizontalAlignment == Alignment.End) TextAlign.End else TextAlign.Start
+        )
+        Text(
+            text = value,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color.White,
+            fontFamily = FontFamily.Monospace,
+            textAlign = if (horizontalAlignment == Alignment.End) TextAlign.End else TextAlign.Start
+        )
     }
 }
 
