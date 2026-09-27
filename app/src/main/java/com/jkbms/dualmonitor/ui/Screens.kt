@@ -75,8 +75,11 @@ fun DashboardScreen(
 
         TotalBankCard(bank)
 
-        BatteryCard(bms = b1, title = "BATTERY 1 (JK_BD6A24S12P)", onViewCells = { onInspectCells(b1) })
-        BatteryCard(bms = b2, title = "BATTERY 2 (JK_BD6A20S10P)", onViewCells = { onInspectCells(b2) })
+        val b1Title = if (b1.displayName.isNotBlank()) b1.displayName else "BATTERY 1 (24S)"
+        val b2Title = if (b2.displayName.isNotBlank()) b2.displayName else "BATTERY 2 (20S)"
+
+        BatteryCard(bms = b1, title = b1Title, onViewCells = { onInspectCells(b1) })
+        BatteryCard(bms = b2, title = b2Title, onViewCells = { onInspectCells(b2) })
     }
 }
 
@@ -338,7 +341,7 @@ fun ScanBottomSheet(
             }
 
             LazyColumn(
-                modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(max = 260.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(devices.size) { index ->
@@ -362,22 +365,30 @@ fun ScanBottomSheet(
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Button(
-                                    onClick = { manager.bms1.connect(dev.address) },
+                                    onClick = { manager.assignB1(dev.address) },
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (isAssignedB1) Color(0xFF1565C0) else Color(0xFF1E88E5)
+                                        containerColor = if (isAssignedB1) Color(0xFF1565C0) else Color(0xFF2C3240)
                                     ),
                                     shape = RoundedCornerShape(6.dp)
                                 ) {
-                                    Text(if (isAssignedB1) "B1 (Active)" else "Set B1", fontSize = 11.sp)
+                                    Text(
+                                        if (isAssignedB1) "✓ B1 Active" else if (isAssignedB2) "Move to B1" else "Set B1",
+                                        fontSize = 11.sp,
+                                        color = if (isAssignedB1) Color.White else Color(0xFF90CAF9)
+                                    )
                                 }
                                 Button(
-                                    onClick = { manager.bms2.connect(dev.address) },
+                                    onClick = { manager.assignB2(dev.address) },
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (isAssignedB2) Color(0xFF2E7D32) else Color(0xFF43A047)
+                                        containerColor = if (isAssignedB2) Color(0xFF2E7D32) else Color(0xFF2C3240)
                                     ),
                                     shape = RoundedCornerShape(6.dp)
                                 ) {
-                                    Text(if (isAssignedB2) "B2 (Active)" else "Set B2", fontSize = 11.sp)
+                                    Text(
+                                        if (isAssignedB2) "✓ B2 Active" else if (isAssignedB1) "Move to B2" else "Set B2",
+                                        fontSize = 11.sp,
+                                        color = if (isAssignedB2) Color.White else Color(0xFFA5D6A7)
+                                    )
                                 }
                             }
                         }
@@ -385,7 +396,71 @@ fun ScanBottomSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Quick Connect Card for User's Saved Battery Units
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1F29)),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("DIRECT BMS QUICK PAIR", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+
+                    val isB1Set = b1.macAddress.equals("C8:47:80:1B:76:00", ignoreCase = true)
+                    val isB2Set = b2.macAddress.equals("C8:47:80:1C:14:68", ignoreCase = true)
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("48V 100ah #1", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Text("C8:47:80:1B:76:00", color = Color.Gray, fontSize = 10.sp)
+                        }
+                        Button(
+                            onClick = { manager.assignB1("C8:47:80:1B:76:00") },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isB1Set) Color(0xFF1565C0) else Color(0xFF2C3240)
+                            ),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                if (isB1Set) "✓ Set as B1" else "Set as B1",
+                                fontSize = 11.sp,
+                                color = if (isB1Set) Color.White else Color(0xFF90CAF9)
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("48V 100ah #2", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                            Text("C8:47:80:1C:14:68", color = Color.Gray, fontSize = 10.sp)
+                        }
+                        Button(
+                            onClick = { manager.assignB2("C8:47:80:1C:14:68") },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isB2Set) Color(0xFF2E7D32) else Color(0xFF2C3240)
+                            ),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                if (isB2Set) "✓ Set as B2" else "Set as B2",
+                                fontSize = 11.sp,
+                                color = if (isB2Set) Color.White else Color(0xFFA5D6A7)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
             Button(
                 onClick = onDismiss,
                 modifier = Modifier.fillMaxWidth(),
