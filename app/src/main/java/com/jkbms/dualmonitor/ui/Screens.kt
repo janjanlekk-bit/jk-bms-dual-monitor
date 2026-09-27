@@ -113,8 +113,13 @@ fun TotalBankCard(bank: TotalBankData) {
                 MetricItem(label = "TOTAL CURRENT", value = String.format("%.1f A", bank.current))
             }
             Spacer(modifier = Modifier.height(8.dp))
+            val totalPowerDisplay = if (kotlin.math.abs(bank.power) < 1000f) {
+                String.format("%.0f W", bank.power)
+            } else {
+                String.format("%.2f kW", bank.power / 1000f)
+            }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                MetricItem(label = "TOTAL POWER", value = String.format("%.2f kW", bank.power / 1000f))
+                MetricItem(label = "TOTAL POWER", value = totalPowerDisplay)
                 MetricItem(label = "WEIGHTED SOC", value = "${bank.capacityWeightedSoc} %")
             }
         }
@@ -123,6 +128,12 @@ fun TotalBankCard(bank: TotalBankData) {
 
 @Composable
 fun BatteryCard(bms: BmsData, title: String, onViewCells: () -> Unit) {
+    val bmsPowerDisplay = if (kotlin.math.abs(bms.power) < 1000f) {
+        String.format("%.0f W", bms.power)
+    } else {
+        String.format("%.2f kW", bms.power / 1000f)
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -137,7 +148,7 @@ fun BatteryCard(bms: BmsData, title: String, onViewCells: () -> Unit) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column {
                     Text(String.format("%.2f V", bms.voltage), fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color.White, fontFamily = FontFamily.Monospace)
-                    Text(String.format("%.1f A  |  %.0f W", bms.current, bms.power), color = Color.Gray, fontSize = 14.sp)
+                    Text(String.format("%.1f A  |  %s", bms.current, bmsPowerDisplay), color = Color.Gray, fontSize = 14.sp)
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text("Temp: ${bms.temperature}°C", color = Color.LightGray, fontSize = 13.sp)
