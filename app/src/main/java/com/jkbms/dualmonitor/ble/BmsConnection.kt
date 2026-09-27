@@ -1,4 +1,4 @@
-﻿package com.jkbms.dualmonitor.ble
+package com.jkbms.dualmonitor.ble
 
 import android.annotation.SuppressLint
 import android.bluetooth.*
@@ -186,7 +186,7 @@ class BmsConnection(
         try {
             bluetoothGatt?.disconnect()
             bluetoothGatt?.close()
-        } catch (_: Exception) {}
+        } catch (e: Exception) {}
         bluetoothGatt = null
     }
 

@@ -1,4 +1,4 @@
-﻿plugins {
+plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -6,12 +6,12 @@
 
 android {
     namespace = "com.jkbms.dualmonitor"
-    compileSdk = 35
+    compileSdk = 34
 
     defaultConfig {
         applicationId = "com.jkbms.dualmonitor"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 34
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

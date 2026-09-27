@@ -1,4 +1,4 @@
-﻿package com.jkbms.dualmonitor.protocol
+package com.jkbms.dualmonitor.protocol
 
 import java.util.UUID
 
@@ -13,8 +13,8 @@ object Jk02Protocol {
     const val FRAME_TYPE_CELL_INFO: Byte = 0x02
     const val FRAME_TYPE_DEVICE_INFO: Byte = 0x03
 
-    const val CMD_REQUEST_SETTINGS: Byte = 0x96.toByte()
-    const val CMD_REQUEST_DEVICE_INFO: Byte = 0x97.toByte()
+    val CMD_REQUEST_SETTINGS: Byte = 0x96.toByte()
+    val CMD_REQUEST_DEVICE_INFO: Byte = 0x97.toByte()
 
     fun computeChecksum(buffer: ByteArray, offset: Int, length: Int): Byte {
         var sum = 0

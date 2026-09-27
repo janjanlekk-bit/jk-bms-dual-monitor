@@ -1,4 +1,4 @@
-﻿package com.jkbms.dualmonitor.protocol
+package com.jkbms.dualmonitor.protocol
 
 import com.jkbms.dualmonitor.model.BmsData
 import com.jkbms.dualmonitor.model.CellData
@@ -55,7 +55,7 @@ object Jk02Parser {
                 ((data[151].toLong() and 0xFF) shl 8) or
                 ((data[152].toLong() and 0xFF) shl 16) or
                 ((data[153].toLong() and 0xFF) shl 24)
-        val packVoltage = if (rawPackV in 1..15000) rawPackV / 100f else cells.sumOf { it.voltage.toDouble() }.toFloat()
+        val packVoltage = if (rawPackV in 1L..15000L) rawPackV / 100f else cells.sumOf { it.voltage.toDouble() }.toFloat()
 
         val rawCurrent = (data[158].toInt() and 0xFF) or
                 ((data[159].toInt() and 0xFF) shl 8) or
@@ -65,7 +65,7 @@ object Jk02Parser {
 
         val soc = data[173].toInt() and 0xFF
 
-        val rawTemp1 = ((data[180].toInt() and 0xFF) or (data[181].toInt() shl 8)).toShort()
+        val rawTemp1 = ((data[180].toInt() and 0xFF) or ((data[181].toInt() and 0xFF) shl 8)).toShort()
         val tempVal = rawTemp1 / 10f
 
         return current.copy(
