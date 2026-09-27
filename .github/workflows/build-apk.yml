@@ -24,10 +24,10 @@ jobs:
       - name: Make Gradlew Executable
         run: chmod +x gradlew
 
-      - name: Build Debug APK
+      - name: Build APKs (Release & Debug)
         run: |
           set -o pipefail
-          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log
+          ./gradlew assembleRelease assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log
 
       - name: Dump Failure Logs
         if: failure()
@@ -39,6 +39,14 @@ jobs:
         with:
           name: build-failure-log
           path: build.log
+
+      - name: Upload Release APK (Signed)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: JK-BMS-DualMonitor-Release-APK
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 14
 
       - name: Upload Debug APK
         if: success()
