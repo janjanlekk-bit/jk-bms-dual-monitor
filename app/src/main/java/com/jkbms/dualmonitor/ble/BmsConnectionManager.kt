@@ -188,4 +188,9 @@ class BmsConnectionManager(context: Context) {
             remainingCapacityAh = totalCap
         )
     }.stateIn(scope, SharingStarted.WhileSubscribed(5000), TotalBankData())
+
+    fun disconnectAll() {
+        bms1.disconnect()
+        bms2.disconnect()
+    }
 }
