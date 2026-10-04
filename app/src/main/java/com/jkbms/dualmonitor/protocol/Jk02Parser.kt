@@ -82,63 +82,43 @@ object Jk02Parser {
         val powerW = packVoltage * currentA
 
         // 4. State of Charge (SOC, in %)
-        val socCandidates = listOf(
-            if (baseOffset == 150) 173 else 141,
-            173,
-            141,
-            157,
-            172,
-            174
-        )
-        var foundSoc = 0
-        for (idx in socCandidates) {
-            if (idx < data.size) {
-                val candidateSoc = data[idx].toInt() and 0xFF
-                if (candidateSoc in 1..100) {
-                    foundSoc = candidateSoc
-                    break
-                }
-            }
+        val socOffset = baseOffset + 23
+        val rawSoc = if (socOffset < data.size) data[socOffset].toInt() and 0xFF else -1
+        val soc = if (rawSoc in 0..100) {
+            rawSoc
+        } else {
+            val candidate = listOf(173, 141, 157).firstOrNull { it < data.size && (data[it].toInt() and 0xFF) in 0..100 }
+            if (candidate != null) data[candidate].toInt() and 0xFF else current.soc
         }
-        val soc = if (foundSoc > 0) foundSoc else current.soc
 
         // 5. Temperatures (0.1 °C)
-        val temp1Offset = when (baseOffset) {
-            150 -> 180
-            134 -> 146
-            else -> 130
-        }
-        val temp2Offset = temp1Offset + 2
-        val mosTempOffset = temp1Offset + 4
+        val mosTempOffset = baseOffset + 12
+        val battTempOffset = baseOffset + 14
 
-        val t1 = getInt16(data, temp1Offset) * 0.1f
-        val t2 = getInt16(data, temp2Offset) * 0.1f
         val tMos = getInt16(data, mosTempOffset) * 0.1f
+        val tBatt = getInt16(data, battTempOffset) * 0.1f
 
         val temperature = when {
-            t1 in -30f..90f && t1 != 0f -> t1
-            t2 in -30f..90f && t2 != 0f -> t2
-            tMos in -30f..90f && tMos != 0f -> tMos
-            getInt16(data, 180) * 0.1f in -30f..90f && getInt16(data, 180) != 0.toShort() -> getInt16(data, 180) * 0.1f
-            getInt16(data, 130) * 0.1f in -30f..90f && getInt16(data, 130) != 0.toShort() -> getInt16(data, 130) * 0.1f
-            else -> if (t1 in -30f..90f) t1 else current.temperature
+            tBatt in 1.0f..85.0f -> tBatt
+            tMos in 1.0f..85.0f -> tMos
+            getInt16(data, 164) * 0.1f in 1.0f..85.0f -> getInt16(data, 164) * 0.1f
+            getInt16(data, 162) * 0.1f in 1.0f..85.0f -> getInt16(data, 162) * 0.1f
+            getInt16(data, 132) * 0.1f in 1.0f..85.0f -> getInt16(data, 132) * 0.1f
+            getInt16(data, 130) * 0.1f in 1.0f..85.0f -> getInt16(data, 130) * 0.1f
+            else -> current.temperature
         }
 
         // 6. Remaining Capacity (Ah)
-        val capOffset = when (baseOffset) {
-            150 -> 174
-            134 -> 158
-            else -> 142
-        }
+        val capOffset = baseOffset + 24
         val rawCap = getUint32(data, capOffset)
         val parsedCap = when {
-            rawCap * 0.001f in 5f..1500f -> rawCap * 0.001f
-            rawCap * 0.01f in 5f..1500f -> rawCap * 0.01f
-            rawCap.toFloat() in 5f..1500f -> rawCap.toFloat()
-            soc > 0 -> 100f * (soc / 100f)
-            else -> current.remainingCapacityAh
+            soc == 0 -> 0f
+            rawCap * 0.001f in 0.01f..2000f -> rawCap * 0.001f
+            rawCap * 0.01f in 0.01f..2000f -> rawCap * 0.01f
+            soc > 0 -> current.nominalCapacityAh * (soc / 100f)
+            else -> 0f
         }
-        val remainingCapacity = if (parsedCap > 0f) parsedCap else 100f
+        val remainingCapacity = if (soc == 0) 0f else parsedCap
 
         return current.copy(
             voltage = packVoltage,
@@ -146,6 +126,7 @@ object Jk02Parser {
             power = powerW,
             soc = soc,
             remainingCapacityAh = remainingCapacity,
+            nominalCapacityAh = current.nominalCapacityAh,
             temperature = temperature,
             cells = cells,
             averageCellVoltage = avgVoltage,
@@ -161,8 +142,8 @@ object Jk02Parser {
     private fun parseType01(data: ByteArray, current: BmsData): BmsData {
         if (data.size < Jk02Protocol.FRAME_SIZE) return current
         val rawCap = getUint32(data, 10) * 0.001f
-        val cap = if (rawCap in 10f..2000f) rawCap else current.remainingCapacityAh
-        return current.copy(remainingCapacityAh = cap)
+        val nominal = if (rawCap in 10f..2000f) rawCap else current.nominalCapacityAh
+        return current.copy(nominalCapacityAh = nominal)
     }
 
     private fun parseType03(data: ByteArray, current: BmsData): BmsData {
