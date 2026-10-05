@@ -25,7 +25,10 @@ import com.jkbms.dualmonitor.ble.BmsConnectionManager
 import com.jkbms.dualmonitor.model.BmsData
 import com.jkbms.dualmonitor.model.CellData
 import com.jkbms.dualmonitor.model.ConnectionStatus
+import com.jkbms.dualmonitor.model.DailyEnergyRecord
 import com.jkbms.dualmonitor.model.TotalBankData
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 @Composable
 fun DashboardScreen(
@@ -36,6 +39,10 @@ fun DashboardScreen(
     val b1 by manager.bms1.bmsState.collectAsState()
     val b2 by manager.bms2.bmsState.collectAsState()
     val bank by manager.totalBankState.collectAsState()
+    val todayEnergy by manager.energyHistory.todayEnergy.collectAsState()
+    val historyList by manager.energyHistory.historyList.collectAsState()
+
+    var showHistoryDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -77,11 +84,24 @@ fun DashboardScreen(
 
         TotalBankCard(bank)
 
+        TodayEnergyCard(
+            record = todayEnergy,
+            onViewHistory = { showHistoryDialog = true }
+        )
+
         val b1Title = if (b1.displayName.isNotBlank()) b1.displayName else "BATTERY 1 (24S)"
         val b2Title = if (b2.displayName.isNotBlank()) b2.displayName else "BATTERY 2 (20S)"
 
         BatteryCard(bms = b1, title = b1Title, onViewCells = { onInspectCells(b1) })
         BatteryCard(bms = b2, title = b2Title, onViewCells = { onInspectCells(b2) })
+    }
+
+    if (showHistoryDialog) {
+        EnergyHistoryDialog(
+            historyList = historyList,
+            todayRecord = todayEnergy,
+            onDismiss = { showHistoryDialog = false }
+        )
     }
 }
 
@@ -165,6 +185,293 @@ fun TotalBankCard(bank: TotalBankData) {
                 )
             }
         }
+    }
+}
+
+@Composable
+fun TodayEnergyCard(
+    record: DailyEnergyRecord,
+    onViewHistory: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF13222B)),
+        border = BorderStroke(1.dp, Color(0xFF00BFA5).copy(alpha = 0.5f)),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        "TODAY'S ENERGY YIELD & LOAD",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color(0xFF64FFDA),
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        formatDisplayDate(record.date.ifBlank { "Today" }),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.Gray
+                    )
+                }
+                OutlinedButton(
+                    onClick = onViewHistory,
+                    shape = RoundedCornerShape(6.dp),
+                    border = BorderStroke(1.dp, Color(0xFF64FFDA)),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF64FFDA))
+                ) {
+                    Text("7-DAY LOG", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Charged (Solar) vs Discharged (Load)
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+                    Text("SOLAR CHARGED", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                    Text(
+                        String.format("+%.2f kWh", record.chargedKwh),
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF00E676),
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Text(
+                        String.format("+%.1f Ah", record.chargedAh),
+                        fontSize = 12.sp,
+                        color = Color(0xFFA5D6A7),
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                    Text("LOAD CONSUMED", style = MaterialTheme.typography.labelSmall, color = Color.Gray, textAlign = TextAlign.End)
+                    Text(
+                        String.format("-%.2f kWh", record.dischargedKwh),
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFF9100),
+                        fontFamily = FontFamily.Monospace,
+                        textAlign = TextAlign.End
+                    )
+                    Text(
+                        String.format("-%.1f Ah", record.dischargedAh),
+                        fontSize = 12.sp,
+                        color = Color(0xFFFFCC80),
+                        fontFamily = FontFamily.Monospace,
+                        textAlign = TextAlign.End
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+            HorizontalDivider(color = Color(0xFF1E353B), thickness = 1.dp)
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Net Balance & Daily SOC Range
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+                    Text("NET BALANCE", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                    val net = record.netKwh
+                    val sign = if (net > 0f) "+" else ""
+                    val netColor = if (net >= 0f) Color(0xFF69F0AE) else Color(0xFFFF8A80)
+                    Text(
+                        String.format("%s%.2f kWh", sign, net),
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = netColor,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                    Text("DAILY SOC RANGE", style = MaterialTheme.typography.labelSmall, color = Color.Gray, textAlign = TextAlign.End)
+                    val socText = if (record.minSoc > 0 || record.maxSoc > 0) {
+                        "${record.minSoc}% → ${record.maxSoc}%"
+                    } else "—"
+                    Text(
+                        socText,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        fontFamily = FontFamily.Monospace,
+                        textAlign = TextAlign.End
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun EnergyHistoryDialog(
+    historyList: List<DailyEnergyRecord>,
+    todayRecord: DailyEnergyRecord,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text(
+                    text = "Daily Energy History",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                Text(
+                    text = "Past 7-day solar yield & load consumption",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.Gray
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Today's ongoing summary
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF13222B)),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, Color(0xFF00BFA5).copy(alpha = 0.5f))
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("TODAY (ACTIVE)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64FFDA))
+                            val socText = if (todayRecord.minSoc > 0 || todayRecord.maxSoc > 0) {
+                                "SOC ${todayRecord.minSoc}% → ${todayRecord.maxSoc}%"
+                            } else ""
+                            Text(socText, fontSize = 11.sp, color = Color.LightGray)
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(
+                                String.format("+%.2f kWh (%.1f Ah)", todayRecord.chargedKwh, todayRecord.chargedAh),
+                                color = Color(0xFF00E676),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Text(
+                                String.format("-%.2f kWh (%.1f Ah)", todayRecord.dischargedKwh, todayRecord.dischargedAh),
+                                color = Color(0xFFFF9100),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                }
+
+                if (historyList.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("No archived past days yet.", color = Color.LightGray, fontSize = 13.sp)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                "Daily records are saved automatically each midnight.",
+                                color = Color.Gray,
+                                fontSize = 11.sp,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                } else {
+                    Text("ARCHIVED DAYS (UP TO 7 DAYS)", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                    historyList.take(7).forEach { item ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF202531)),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        formatDisplayDate(item.date),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                    if (item.minSoc > 0 || item.maxSoc > 0) {
+                                        Text("SOC ${item.minSoc}% → ${item.maxSoc}%", fontSize = 11.sp, color = Color.Gray)
+                                    }
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        String.format("+%.2f kWh (%.1f Ah)", item.chargedKwh, item.chargedAh),
+                                        color = Color(0xFF00E676),
+                                        fontSize = 12.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                    Text(
+                                        String.format("-%.2f kWh (%.1f Ah)", item.dischargedKwh, item.dischargedAh),
+                                        color = Color(0xFFFF9100),
+                                        fontSize = 12.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+
+                                val net = item.netKwh
+                                val sign = if (net > 0f) "+" else ""
+                                Text(
+                                    text = String.format("Net: %s%.2f kWh", sign, net),
+                                    fontSize = 11.sp,
+                                    color = if (net >= 0f) Color(0xFF80CBC4) else Color(0xFFFFAB91),
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("CLOSE", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+        },
+        containerColor = Color(0xFF161A22),
+        shape = RoundedCornerShape(16.dp)
+    )
+}
+
+fun formatDisplayDate(dateStr: String): String {
+    return try {
+        val inFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val outFormat = SimpleDateFormat("EEE, MMM d, yyyy", Locale.US)
+        val date = inFormat.parse(dateStr)
+        if (date != null) outFormat.format(date) else dateStr
+    } catch (e: Exception) {
+        dateStr
     }
 }
 

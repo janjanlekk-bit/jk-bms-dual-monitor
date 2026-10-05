@@ -120,6 +120,15 @@ object Jk02Parser {
         }
         val remainingCapacity = if (soc == 0) 0f else parsedCap
 
+        // 7. Cumulative Charge Cycle Ah (Hardware Odometer)
+        val rawOdo36 = getUint32(data, baseOffset + 36)
+        val rawOdo32 = getUint32(data, baseOffset + 32)
+        val parsedOdometer = when {
+            rawOdo36 in 1..2000000000L -> rawOdo36 * 0.001f
+            rawOdo32 in 1..2000000000L -> rawOdo32 * 0.001f
+            else -> current.totalChargingCycleAh
+        }
+
         return current.copy(
             voltage = packVoltage,
             current = currentA,
@@ -127,6 +136,7 @@ object Jk02Parser {
             soc = soc,
             remainingCapacityAh = remainingCapacity,
             nominalCapacityAh = current.nominalCapacityAh,
+            totalChargingCycleAh = if (parsedOdometer > 0f) parsedOdometer else current.totalChargingCycleAh,
             temperature = temperature,
             cells = cells,
             averageCellVoltage = avgVoltage,

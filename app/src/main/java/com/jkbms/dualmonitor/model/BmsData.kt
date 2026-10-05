@@ -23,6 +23,7 @@ data class BmsData(
     val soc: Int = 0,
     val remainingCapacityAh: Float = 0f,
     val nominalCapacityAh: Float = 100f,
+    val totalChargingCycleAh: Float = 0f,
     val temperature: Float = 0f,
     val cells: List<CellData> = emptyList(),
     val averageCellVoltage: Float = 0f,
@@ -41,3 +42,17 @@ data class TotalBankData(
     val capacityWeightedSoc: Int = 0,
     val remainingCapacityAh: Float = 0f
 )
+
+data class DailyEnergyRecord(
+    val date: String = "",
+    val chargedAh: Float = 0f,
+    val dischargedAh: Float = 0f,
+    val chargedKwh: Float = 0f,
+    val dischargedKwh: Float = 0f,
+    val minSoc: Int = 0,
+    val maxSoc: Int = 0,
+    val lastUpdated: Long = 0L
+) {
+    val netKwh: Float get() = chargedKwh - dischargedKwh
+    val netAh: Float get() = chargedAh - dischargedAh
+}

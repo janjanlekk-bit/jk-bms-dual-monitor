@@ -8,12 +8,14 @@ import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.os.ParcelUuid
+import com.jkbms.dualmonitor.model.EnergyHistoryManager
 import com.jkbms.dualmonitor.model.TotalBankData
 import com.jkbms.dualmonitor.protocol.Jk02Protocol
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 
 data class DiscoveredDevice(
     val name: String,
@@ -127,6 +129,32 @@ class BmsConnectionManager(context: Context) {
 
     val bms1 = BmsConnection("B1", context, scope)
     val bms2 = BmsConnection("B2", context, scope)
+    val energyHistory = EnergyHistoryManager(context, scope)
+
+    val totalBankState: StateFlow<TotalBankData> = combine(bms1.bmsState, bms2.bmsState) { b1, b2 ->
+        val activeBmsList = listOf(b1, b2).filter { it.voltage > 1.0f }
+
+        val totalCurrent = activeBmsList.sumOf { it.current.toDouble() }.toFloat()
+        val totalPower = activeBmsList.sumOf { it.power.toDouble() }.toFloat()
+        val avgVoltage = if (activeBmsList.isNotEmpty()) activeBmsList.map { it.voltage }.average().toFloat() else 0f
+
+        val totalCap = activeBmsList.sumOf { it.remainingCapacityAh.toDouble() }.toFloat()
+        val weightedSoc = if (totalCap > 0f) {
+            (activeBmsList.sumOf { (it.remainingCapacityAh * it.soc).toDouble() } / totalCap).toInt()
+        } else if (activeBmsList.isNotEmpty()) {
+            activeBmsList.map { it.soc }.average().toInt()
+        } else {
+            0
+        }
+
+        TotalBankData(
+            voltage = avgVoltage,
+            current = totalCurrent,
+            power = totalPower,
+            capacityWeightedSoc = weightedSoc.coerceIn(0, 100),
+            remainingCapacityAh = totalCap
+        )
+    }.stateIn(scope, SharingStarted.Eagerly, TotalBankData())
 
     init {
         // Automatically restore and connect previously paired BMS devices
@@ -137,6 +165,15 @@ class BmsConnectionManager(context: Context) {
         }
         if (!savedB2.isNullOrBlank()) {
             bms2.connect(savedB2)
+        }
+
+        // Keep daily energy and odometer tracking updated
+        scope.launch {
+            combine(bms1.bmsState, bms2.bmsState, totalBankState) { b1, b2, bank ->
+                Triple(b1, b2, bank)
+            }.collect { (b1, b2, bank) ->
+                energyHistory.update(b1, b2, bank)
+            }
         }
     }
 
@@ -163,31 +200,6 @@ class BmsConnectionManager(context: Context) {
         }
         bms2.connect(clean)
     }
-
-    val totalBankState: StateFlow<TotalBankData> = combine(bms1.bmsState, bms2.bmsState) { b1, b2 ->
-        val activeBmsList = listOf(b1, b2).filter { it.voltage > 1.0f }
-
-        val totalCurrent = activeBmsList.sumOf { it.current.toDouble() }.toFloat()
-        val totalPower = activeBmsList.sumOf { it.power.toDouble() }.toFloat()
-        val avgVoltage = if (activeBmsList.isNotEmpty()) activeBmsList.map { it.voltage }.average().toFloat() else 0f
-
-        val totalCap = activeBmsList.sumOf { it.remainingCapacityAh.toDouble() }.toFloat()
-        val weightedSoc = if (totalCap > 0f) {
-            (activeBmsList.sumOf { (it.remainingCapacityAh * it.soc).toDouble() } / totalCap).toInt()
-        } else if (activeBmsList.isNotEmpty()) {
-            activeBmsList.map { it.soc }.average().toInt()
-        } else {
-            0
-        }
-
-        TotalBankData(
-            voltage = avgVoltage,
-            current = totalCurrent,
-            power = totalPower,
-            capacityWeightedSoc = weightedSoc.coerceIn(0, 100),
-            remainingCapacityAh = totalCap
-        )
-    }.stateIn(scope, SharingStarted.WhileSubscribed(5000), TotalBankData())
 
     fun disconnectAll() {
         bms1.disconnect()
