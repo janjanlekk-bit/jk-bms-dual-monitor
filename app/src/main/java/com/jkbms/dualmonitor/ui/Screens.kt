@@ -3,6 +3,8 @@ package com.jkbms.dualmonitor.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -28,6 +30,7 @@ import com.jkbms.dualmonitor.model.ConnectionStatus
 import com.jkbms.dualmonitor.model.DailyEnergyRecord
 import com.jkbms.dualmonitor.model.TotalBankData
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Locale
 
 @Composable
@@ -86,6 +89,7 @@ fun DashboardScreen(
 
         TodayEnergyCard(
             record = todayEnergy,
+            historyList = historyList,
             onViewHistory = { showHistoryDialog = true }
         )
 
@@ -191,6 +195,7 @@ fun TotalBankCard(bank: TotalBankData) {
 @Composable
 fun TodayEnergyCard(
     record: DailyEnergyRecord,
+    historyList: List<DailyEnergyRecord> = emptyList(),
     onViewHistory: () -> Unit
 ) {
     Card(
@@ -200,6 +205,7 @@ fun TodayEnergyCard(
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
+            // Header (without top button)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -217,15 +223,6 @@ fun TodayEnergyCard(
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.Gray
                     )
-                }
-                OutlinedButton(
-                    onClick = onViewHistory,
-                    shape = RoundedCornerShape(6.dp),
-                    border = BorderStroke(1.dp, Color(0xFF64FFDA)),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF64FFDA))
-                ) {
-                    Text("7-DAY LOG", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -303,6 +300,196 @@ fun TodayEnergyCard(
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(color = Color(0xFF1E353B), thickness = 1.dp)
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Month Bar Graph Preview
+            val monthDays = remember(record, historyList) {
+                buildMonthDays(historyList, record)
+            }
+
+            Text(
+                "${getMonthHeaderTitle()} — DAILY BAR GRAPH",
+                fontSize = 11.sp,
+                color = Color(0xFF80CBC4),
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+
+            MonthlyEnergyBarChart(
+                monthDays = monthDays,
+                selectedDate = record.date,
+                onSelectDate = { onViewHistory() },
+                compact = true
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Button moved to the bottom of the card!
+            Button(
+                onClick = onViewHistory,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B3A36)),
+                border = BorderStroke(1.dp, Color(0xFF00BFA5).copy(alpha = 0.6f)),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text(
+                    "VIEW 30-DAY LOG & DETAILED CHARTS",
+                    color = Color(0xFF64FFDA),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun MonthlyEnergyBarChart(
+    monthDays: List<DailyEnergyRecord>,
+    selectedDate: String?,
+    onSelectDate: (DailyEnergyRecord) -> Unit,
+    modifier: Modifier = Modifier,
+    compact: Boolean = false
+) {
+    val maxKwh = maxOf(
+        monthDays.maxOfOrNull { maxOf(it.chargedKwh, it.dischargedKwh) } ?: 0f,
+        5.0f
+    )
+    val todayStr = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date()) }
+    val scrollState = rememberScrollState()
+
+    LaunchedEffect(monthDays.size) {
+        // Scroll toward current day of month so active days are immediately visible
+        val currentDay = Calendar.getInstance().get(Calendar.DAY_OF_MONTH)
+        val targetScroll = (currentDay - 5).coerceAtLeast(0) * 60
+        scrollState.animateScrollTo(targetScroll)
+    }
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        // Legend
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Box(modifier = Modifier.size(8.dp).background(Color(0xFF00E676), RoundedCornerShape(2.dp)))
+                    Text("Solar", color = Color.LightGray, fontSize = 10.sp)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Box(modifier = Modifier.size(8.dp).background(Color(0xFFFF9100), RoundedCornerShape(2.dp)))
+                    Text("Load", color = Color.LightGray, fontSize = 10.sp)
+                }
+            }
+            Text(
+                "Peak: ${String.format("%.1f", maxKwh)} kWh",
+                color = Color.Gray,
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        val chartHeightDp = if (compact) 65f else 100f
+
+        // Horizontal scroll container with all days in month
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(scrollState)
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            monthDays.forEach { rec ->
+                val isToday = rec.date == todayStr
+                val isSelected = rec.date == selectedDate
+                val chargedH = if (rec.chargedKwh > 0f) {
+                    (chartHeightDp * (rec.chargedKwh / maxKwh)).coerceIn(4f, chartHeightDp).dp
+                } else 0.dp
+                val dischargedH = if (rec.dischargedKwh > 0f) {
+                    (chartHeightDp * (rec.dischargedKwh / maxKwh)).coerceIn(4f, chartHeightDp).dp
+                } else 0.dp
+
+                val dayNum = rec.date.takeLast(2)
+
+                Column(
+                    modifier = Modifier
+                        .width(if (compact) 24.dp else 30.dp)
+                        .clickable { onSelectDate(rec) }
+                        .background(
+                            if (isSelected) Color(0xFF1E3A3A) else Color.Transparent,
+                            RoundedCornerShape(4.dp)
+                        )
+                        .padding(horizontal = 2.dp, vertical = 2.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(chartHeightDp.dp),
+                        contentAlignment = Alignment.BottomCenter
+                    ) {
+                        // Baseline axis line
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(Color(0xFF2C3240))
+                                .align(Alignment.BottomCenter)
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxHeight(),
+                            verticalAlignment = Alignment.Bottom,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            // Solar bar (Green)
+                            Box(
+                                modifier = Modifier
+                                    .width(if (compact) 7.dp else 9.dp)
+                                    .height(chargedH)
+                                    .background(
+                                        Color(0xFF00E676),
+                                        RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp)
+                                    )
+                            )
+                            // Load bar (Orange)
+                            Box(
+                                modifier = Modifier
+                                    .width(if (compact) 7.dp else 9.dp)
+                                    .height(dischargedH)
+                                    .background(
+                                        Color(0xFFFF9100),
+                                        RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp)
+                                    )
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = dayNum,
+                        fontSize = if (compact) 9.sp else 10.sp,
+                        fontWeight = if (isToday || isSelected) FontWeight.Bold else FontWeight.Normal,
+                        color = when {
+                            isToday -> Color(0xFF64FFDA)
+                            isSelected -> Color.White
+                            rec.chargedKwh > 0f || rec.dischargedKwh > 0f -> Color.LightGray
+                            else -> Color(0xFF555D6E)
+                        }
+                    )
+                }
+            }
         }
     }
 }
@@ -313,20 +500,27 @@ fun EnergyHistoryDialog(
     todayRecord: DailyEnergyRecord,
     onDismiss: () -> Unit
 ) {
+    val monthDays = remember(historyList, todayRecord) {
+        buildMonthDays(historyList, todayRecord)
+    }
+    val todayStr = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date()) }
+    var selectedRecord by remember { mutableStateOf<DailyEnergyRecord?>(todayRecord) }
+    val activeSelected = selectedRecord ?: todayRecord
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Column {
                 Text(
-                    text = "Daily Energy History",
+                    text = "30-Day Energy History",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
                 Text(
-                    text = "Past 7-day solar yield & load consumption",
+                    text = "${getMonthHeaderTitle()} — Daily Solar & Load Graph",
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color.Gray
+                    color = Color(0xFF80CBC4)
                 )
             }
         },
@@ -334,84 +528,167 @@ fun EnergyHistoryDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 420.dp)
+                    .heightIn(max = 480.dp)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Today's ongoing summary
+                // 1. Monthly Bar Graph Card
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF13222B)),
-                    shape = RoundedCornerShape(8.dp),
-                    border = BorderStroke(1.dp, Color(0xFF00BFA5).copy(alpha = 0.5f))
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF131F2A)),
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, Color(0xFF00BFA5).copy(alpha = 0.4f))
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("TODAY (ACTIVE)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64FFDA))
-                            val socText = if (todayRecord.minSoc > 0 || todayRecord.maxSoc > 0) {
-                                "SOC ${todayRecord.minSoc}% → ${todayRecord.maxSoc}%"
-                            } else ""
-                            Text(socText, fontSize = 11.sp, color = Color.LightGray)
+                            Text("DAILY YIELD & LOAD BARS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64FFDA))
+                            Text("Tap bar to inspect", fontSize = 10.sp, color = Color.Gray)
                         }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(
-                                String.format("+%.2f kWh (%.1f Ah)", todayRecord.chargedKwh, todayRecord.chargedAh),
-                                color = Color(0xFF00E676),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                            Text(
-                                String.format("-%.2f kWh (%.1f Ah)", todayRecord.dischargedKwh, todayRecord.dischargedAh),
-                                color = Color(0xFFFF9100),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        MonthlyEnergyBarChart(
+                            monthDays = monthDays,
+                            selectedDate = activeSelected.date,
+                            onSelectDate = { rec -> selectedRecord = rec },
+                            compact = false
+                        )
                     }
                 }
 
-                if (historyList.isEmpty()) {
+                // 2. Selected Day Inspector Card
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1B2836)),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, Color(0xFF26A69A).copy(alpha = 0.5f))
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val isToday = activeSelected.date == todayStr
+                            Text(
+                                text = "${formatDisplayDate(activeSelected.date)}${if (isToday) " (TODAY)" else ""}",
+                                fontWeight = FontWeight.Bold,
+                                color = if (isToday) Color(0xFF64FFDA) else Color.White,
+                                fontSize = 13.sp
+                            )
+                            if (activeSelected.minSoc > 0 || activeSelected.maxSoc > 0) {
+                                Text(
+                                    text = "SOC ${activeSelected.minSoc}% → ${activeSelected.maxSoc}%",
+                                    color = Color.LightGray,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text("SOLAR YIELD", fontSize = 10.sp, color = Color.Gray)
+                                Text(
+                                    String.format("+%.2f kWh", activeSelected.chargedKwh),
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF00E676),
+                                    fontFamily = FontFamily.Monospace
+                                )
+                                Text(
+                                    String.format("+%.1f Ah", activeSelected.chargedAh),
+                                    fontSize = 11.sp,
+                                    color = Color(0xFFA5D6A7),
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text("LOAD CONSUMED", fontSize = 10.sp, color = Color.Gray, textAlign = TextAlign.End)
+                                Text(
+                                    String.format("-%.2f kWh", activeSelected.dischargedKwh),
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFFF9100),
+                                    fontFamily = FontFamily.Monospace,
+                                    textAlign = TextAlign.End
+                                )
+                                Text(
+                                    String.format("-%.1f Ah", activeSelected.dischargedAh),
+                                    fontSize = 11.sp,
+                                    color = Color(0xFFFFCC80),
+                                    fontFamily = FontFamily.Monospace,
+                                    textAlign = TextAlign.End
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+                        val net = activeSelected.netKwh
+                        val sign = if (net > 0f) "+" else ""
+                        Text(
+                            text = String.format("Net Balance: %s%.2f kWh", sign, net),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (net >= 0f) Color(0xFF69F0AE) else Color(0xFFFF8A80),
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+
+                // 3. 30-Day Breakdown List
+                Text("PAST 30 DAYS LOG", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+
+                val combinedHistory = remember(historyList, todayRecord) {
+                    val list = mutableListOf(todayRecord)
+                    list.addAll(historyList.filter { it.date != todayRecord.date })
+                    list.filter { it.chargedAh > 0.05f || it.dischargedAh > 0.05f || it.chargedKwh > 0.01f || it.dischargedKwh > 0.01f }
+                }
+
+                if (combinedHistory.isEmpty()) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 24.dp),
+                            .padding(vertical = 16.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("No archived past days yet.", color = Color.LightGray, fontSize = 13.sp)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                "Daily records are saved automatically each midnight.",
-                                color = Color.Gray,
-                                fontSize = 11.sp,
-                                textAlign = TextAlign.Center
-                            )
-                        }
+                        Text(
+                            "Daily records are saved automatically each midnight.",
+                            color = Color.Gray,
+                            fontSize = 11.sp,
+                            textAlign = TextAlign.Center
+                        )
                     }
                 } else {
-                    Text("ARCHIVED DAYS (UP TO 7 DAYS)", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                    historyList.take(7).forEach { item ->
+                    combinedHistory.take(30).forEach { item ->
+                        val isToday = item.date == todayStr
+                        val isSelected = item.date == activeSelected.date
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF202531)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedRecord = item },
+                            colors = CardDefaults.cardColors(containerColor = if (isSelected) Color(0xFF22313F) else Color(0xFF1E232E)),
+                            border = if (isSelected) BorderStroke(1.dp, Color(0xFF64FFDA)) else null,
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text(
-                                        formatDisplayDate(item.date),
+                                        "${formatDisplayDate(item.date)}${if (isToday) " (TODAY)" else ""}",
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color.White
+                                        color = if (isToday) Color(0xFF64FFDA) else Color.White
                                     )
                                     if (item.minSoc > 0 || item.maxSoc > 0) {
                                         Text("SOC ${item.minSoc}% → ${item.maxSoc}%", fontSize = 11.sp, color = Color.Gray)
@@ -459,9 +736,44 @@ fun EnergyHistoryDialog(
                 Text("CLOSE", color = Color.White, fontWeight = FontWeight.Bold)
             }
         },
-        containerColor = Color(0xFF161A22),
+        containerColor = Color(0xFF141820),
         shape = RoundedCornerShape(16.dp)
     )
+}
+
+fun buildMonthDays(
+    historyList: List<DailyEnergyRecord>,
+    todayRecord: DailyEnergyRecord
+): List<DailyEnergyRecord> {
+    val recordsByDate = mutableMapOf<String, DailyEnergyRecord>()
+    for (rec in historyList) {
+        if (rec.date.isNotBlank()) recordsByDate[rec.date] = rec
+    }
+    if (todayRecord.date.isNotBlank()) {
+        recordsByDate[todayRecord.date] = todayRecord
+    }
+
+    val cal = Calendar.getInstance()
+    val year = cal.get(Calendar.YEAR)
+    val month = cal.get(Calendar.MONTH) // 0-indexed
+    val maxDay = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
+
+    val result = mutableListOf<DailyEnergyRecord>()
+    for (d in 1..maxDay) {
+        val dateKey = String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, d)
+        val existing = recordsByDate[dateKey]
+        if (existing != null) {
+            result.add(existing)
+        } else {
+            result.add(DailyEnergyRecord(date = dateKey))
+        }
+    }
+    return result
+}
+
+fun getMonthHeaderTitle(): String {
+    val cal = Calendar.getInstance()
+    return SimpleDateFormat("MMMM yyyy", Locale.US).format(cal.time).uppercase()
 }
 
 fun formatDisplayDate(dateStr: String): String {
