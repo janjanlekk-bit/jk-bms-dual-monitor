@@ -7,17 +7,24 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.jkbms.dualmonitor.ble.BleScanner
 import com.jkbms.dualmonitor.ble.BmsConnectionManager
 import com.jkbms.dualmonitor.model.BmsData
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -49,6 +56,9 @@ class MainActivity : ComponentActivity() {
                 var showScanSheet by remember { mutableStateOf(false) }
                 var showExitDialog by remember { mutableStateOf(false) }
 
+                val pagerState = rememberPagerState(pageCount = { 2 })
+                val coroutineScope = rememberCoroutineScope()
+
                 // 1. If scan sheet is open, back gesture closes it
                 BackHandler(enabled = showScanSheet) {
                     scanner.stopScan()
@@ -60,8 +70,15 @@ class MainActivity : ComponentActivity() {
                     selectedBmsForCells = null
                 }
 
-                // 3. If on main homescreen, back gesture asks if the user wants to exit
-                BackHandler(enabled = !showScanSheet && selectedBmsForCells == null && !showExitDialog) {
+                // 3. If on Page 2 (Energy Flow), back gesture smoothly returns to Page 1 (Telemetry)
+                BackHandler(enabled = !showScanSheet && selectedBmsForCells == null && pagerState.currentPage == 1) {
+                    coroutineScope.launch {
+                        pagerState.animateScrollToPage(0)
+                    }
+                }
+
+                // 4. If on main homescreen (Page 1), back gesture asks if the user wants to exit
+                BackHandler(enabled = !showScanSheet && selectedBmsForCells == null && pagerState.currentPage == 0 && !showExitDialog) {
                     showExitDialog = true
                 }
 
@@ -72,14 +89,70 @@ class MainActivity : ComponentActivity() {
                             onBack = { selectedBmsForCells = null }
                         )
                     } else {
-                        DashboardScreen(
-                            manager = manager,
-                            onOpenScan = {
-                                scanner.startScan()
-                                showScanSheet = true
-                            },
-                            onInspectCells = { bms -> selectedBmsForCells = bms }
-                        )
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            // Top Page Navigation Bar
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                                    .background(Color(0xFF141720), RoundedCornerShape(12.dp))
+                                    .padding(4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                val pages = listOf("📊 TELEMETRY", "⚡ ENERGY FLOW")
+                                pages.forEachIndexed { index, title ->
+                                    val isSelected = pagerState.currentPage == index
+                                    val bgColor = if (isSelected) Color(0xFF263238) else Color.Transparent
+                                    val textColor = if (isSelected) Color(0xFF00E676) else Color(0xFF90A4AE)
+
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(bgColor)
+                                            .clickable {
+                                                coroutineScope.launch {
+                                                    pagerState.animateScrollToPage(index)
+                                                }
+                                            }
+                                            .padding(vertical = 10.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = title,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
+                                            color = textColor
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Horizontal Swipe Pager
+                            HorizontalPager(
+                                state = pagerState,
+                                modifier = Modifier.fillMaxSize().weight(1f)
+                            ) { page ->
+                                when (page) {
+                                    0 -> DashboardScreen(
+                                        manager = manager,
+                                        onOpenScan = {
+                                            scanner.startScan()
+                                            showScanSheet = true
+                                        },
+                                        onInspectCells = { bms -> selectedBmsForCells = bms }
+                                    )
+                                    1 -> EnergyFlowScreen(
+                                        manager = manager,
+                                        onOpenScan = {
+                                            scanner.startScan()
+                                            showScanSheet = true
+                                        },
+                                        onInspectCells = { bms -> selectedBmsForCells = bms }
+                                    )
+                                }
+                            }
+                        }
                     }
 
                     if (showScanSheet) {
