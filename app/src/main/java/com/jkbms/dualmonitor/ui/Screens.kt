@@ -90,6 +90,7 @@ fun DashboardScreen(
         TodayEnergyCard(
             record = todayEnergy,
             historyList = historyList,
+            bank = bank,
             onViewHistory = { showHistoryDialog = true }
         )
 
@@ -104,6 +105,7 @@ fun DashboardScreen(
         EnergyHistoryDialog(
             historyList = historyList,
             todayRecord = todayEnergy,
+            bank = bank,
             onDismiss = { showHistoryDialog = false }
         )
     }
@@ -196,6 +198,7 @@ fun TotalBankCard(bank: TotalBankData) {
 fun TodayEnergyCard(
     record: DailyEnergyRecord,
     historyList: List<DailyEnergyRecord> = emptyList(),
+    bank: TotalBankData = TotalBankData(),
     onViewHistory: () -> Unit
 ) {
     Card(
@@ -283,6 +286,13 @@ fun TodayEnergyCard(
                         color = netColor,
                         fontFamily = FontFamily.Monospace
                     )
+                    val netAh = record.netAh
+                    Text(
+                        String.format(Locale.US, "%+.1f Ah", netAh),
+                        fontSize = 12.sp,
+                        color = if (netAh >= 0f) Color(0xFFA5D6A7) else Color(0xFFFFAB91),
+                        fontFamily = FontFamily.Monospace
+                    )
                 }
                 Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
                     Text("DAILY SOC RANGE", style = MaterialTheme.typography.labelSmall, color = Color.Gray, textAlign = TextAlign.End)
@@ -294,6 +304,44 @@ fun TodayEnergyCard(
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
+                        fontFamily = FontFamily.Monospace,
+                        textAlign = TextAlign.End
+                    )
+                    val totalCap = when {
+                        bank.nominalCapacityAh > 10f -> bank.nominalCapacityAh
+                        bank.remainingCapacityAh > 0f && bank.capacityWeightedSoc > 0 -> {
+                            bank.remainingCapacityAh / (bank.capacityWeightedSoc / 100f)
+                        }
+                        else -> 200f
+                    }
+                    val displayMinAh = when {
+                        record.minAh > 0.05f -> record.minAh
+                        record.minSoc > 0 -> (record.minSoc / 100f) * totalCap
+                        else -> 0f
+                    }
+                    val displayMaxAh = when {
+                        record.maxAh > 0.05f -> record.maxAh
+                        record.maxSoc > 0 -> (record.maxSoc / 100f) * totalCap
+                        else -> 0f
+                    }
+
+                    val ahText = when {
+                        displayMinAh > 0.05f && displayMaxAh > 0.05f -> {
+                            if (kotlin.math.abs(displayMaxAh - displayMinAh) > 0.05f) {
+                                String.format(Locale.US, "%.1f → %.1f Ah", displayMinAh, displayMaxAh)
+                            } else {
+                                String.format(Locale.US, "%.1f Ah", displayMinAh)
+                            }
+                        }
+                        displayMaxAh > 0.05f -> String.format(Locale.US, "%.1f Ah", displayMaxAh)
+                        displayMinAh > 0.05f -> String.format(Locale.US, "%.1f Ah", displayMinAh)
+                        else -> "—"
+                    }
+
+                    Text(
+                        ahText,
+                        fontSize = 12.sp,
+                        color = Color(0xFFCFD8DC),
                         fontFamily = FontFamily.Monospace,
                         textAlign = TextAlign.End
                     )
@@ -497,6 +545,7 @@ fun MonthlyEnergyBarChart(
 fun EnergyHistoryDialog(
     historyList: List<DailyEnergyRecord>,
     todayRecord: DailyEnergyRecord,
+    bank: TotalBankData = TotalBankData(),
     onDismiss: () -> Unit
 ) {
     val monthDays = remember(historyList, todayRecord) {
@@ -580,8 +629,32 @@ fun EnergyHistoryDialog(
                                 fontSize = 13.sp
                             )
                             if (activeSelected.minSoc > 0 || activeSelected.maxSoc > 0) {
+                                val totalCap = when {
+                                    bank.nominalCapacityAh > 10f -> bank.nominalCapacityAh
+                                    bank.remainingCapacityAh > 0f && bank.capacityWeightedSoc > 0 -> {
+                                        bank.remainingCapacityAh / (bank.capacityWeightedSoc / 100f)
+                                    }
+                                    else -> 200f
+                                }
+                                val selMinAh = when {
+                                    activeSelected.minAh > 0.05f -> activeSelected.minAh
+                                    activeSelected.minSoc > 0 -> (activeSelected.minSoc / 100f) * totalCap
+                                    else -> 0f
+                                }
+                                val selMaxAh = when {
+                                    activeSelected.maxAh > 0.05f -> activeSelected.maxAh
+                                    activeSelected.maxSoc > 0 -> (activeSelected.maxSoc / 100f) * totalCap
+                                    else -> 0f
+                                }
+                                val socAhSpan = if (selMinAh > 0.05f && selMaxAh > 0.05f) {
+                                    if (kotlin.math.abs(selMaxAh - selMinAh) > 0.05f) {
+                                        " (${String.format(Locale.US, "%.1f → %.1f Ah", selMinAh, selMaxAh)})"
+                                    } else {
+                                        " (${String.format(Locale.US, "%.1f Ah", selMinAh)})"
+                                    }
+                                } else ""
                                 Text(
-                                    text = "SOC ${activeSelected.minSoc}% → ${activeSelected.maxSoc}%",
+                                    text = "SOC ${activeSelected.minSoc}% → ${activeSelected.maxSoc}%$socAhSpan",
                                     color = Color.LightGray,
                                     fontSize = 11.sp
                                 )
@@ -632,8 +705,9 @@ fun EnergyHistoryDialog(
 
                         Spacer(modifier = Modifier.height(6.dp))
                         val net = activeSelected.netKwh
+                        val netAh = activeSelected.netAh
                         Text(
-                            text = "Net Balance: ${formatNetEnergy(net)}",
+                            text = "Net Balance: ${formatNetEnergy(net)} (${String.format(Locale.US, "%+.1f Ah", netAh)})",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = if (net >= 0f) Color(0xFF69F0AE) else Color(0xFFFF8A80),

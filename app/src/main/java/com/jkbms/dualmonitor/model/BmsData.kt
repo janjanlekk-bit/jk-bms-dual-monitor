@@ -40,7 +40,8 @@ data class TotalBankData(
     val current: Float = 0f,
     val power: Float = 0f,
     val capacityWeightedSoc: Int = 0,
-    val remainingCapacityAh: Float = 0f
+    val remainingCapacityAh: Float = 0f,
+    val nominalCapacityAh: Float = 0f
 )
 
 data class DailyEnergyRecord(
@@ -51,6 +52,8 @@ data class DailyEnergyRecord(
     val dischargedKwh: Float = 0f,
     val minSoc: Int = 0,
     val maxSoc: Int = 0,
+    val minAh: Float = 0f,
+    val maxAh: Float = 0f,
     val lastUpdated: Long = 0L
 ) {
     val netKwh: Float get() = chargedKwh - dischargedKwh

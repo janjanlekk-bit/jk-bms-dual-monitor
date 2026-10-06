@@ -139,6 +139,7 @@ class BmsConnectionManager(context: Context) {
         val avgVoltage = if (activeBmsList.isNotEmpty()) activeBmsList.map { it.voltage }.average().toFloat() else 0f
 
         val totalCap = activeBmsList.sumOf { it.remainingCapacityAh.toDouble() }.toFloat()
+        val totalNominal = activeBmsList.sumOf { it.nominalCapacityAh.toDouble() }.toFloat()
         val weightedSoc = if (totalCap > 0f) {
             (activeBmsList.sumOf { (it.remainingCapacityAh * it.soc).toDouble() } / totalCap).toInt()
         } else if (activeBmsList.isNotEmpty()) {
@@ -152,7 +153,8 @@ class BmsConnectionManager(context: Context) {
             current = totalCurrent,
             power = totalPower,
             capacityWeightedSoc = weightedSoc.coerceIn(0, 100),
-            remainingCapacityAh = totalCap
+            remainingCapacityAh = totalCap,
+            nominalCapacityAh = totalNominal
         )
     }.stateIn(scope, SharingStarted.Eagerly, TotalBankData())
 

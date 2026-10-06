@@ -46,6 +46,8 @@ class EnergyHistoryManager(
     private var startSoc: Int = 0
     private var minSoc: Int = 0
     private var maxSoc: Int = 0
+    private var minAh: Float = 0f
+    private var maxAh: Float = 0f
     private var peakRemainingTotal: Float = 0f
     private var maxCapacityGainChargedAh: Float = 0f
 
@@ -146,13 +148,17 @@ class EnergyHistoryManager(
                                  (if (b2HasBaseline) b2StartRemainingAh else 0f)
         val deltaRemainingAh = curRemainingTotal - startRemainingTotal
 
-        // 6. Update min and max SOC
+        // 6. Update min and max SOC & Ah
         val currentSoc = bank.capacityWeightedSoc
         if (!isDualConfigured || bothOnline) {
             if (currentSoc in 1..100) {
                 if (startSoc == 0) startSoc = currentSoc
                 minSoc = if (minSoc == 0) currentSoc else min(minSoc, currentSoc)
                 maxSoc = if (maxSoc == 0) currentSoc else max(maxSoc, currentSoc)
+            }
+            if (curRemainingTotal > 0.1f) {
+                minAh = if (minAh <= 0.1f) curRemainingTotal else min(minAh, curRemainingTotal)
+                maxAh = if (maxAh <= 0.1f) curRemainingTotal else max(maxAh, curRemainingTotal)
             }
         }
 
@@ -193,6 +199,9 @@ class EnergyHistoryManager(
         val effectiveChargedKwh = max(liveChargedKwh, (effectiveChargedAh * avgV) / 1000f)
         val effectiveDischargedKwh = max(liveDischargedKwh, (effectiveDischargedAh * avgV) / 1000f)
 
+        val effectiveMinAh = if (minAh > 0.1f) minAh else if (minSoc in 1..100) (minSoc.toFloat() / 100f) * bankCap else 0f
+        val effectiveMaxAh = if (maxAh > 0.1f) maxAh else if (maxSoc in 1..100) (maxSoc.toFloat() / 100f) * bankCap else 0f
+
         val updatedRecord = DailyEnergyRecord(
             date = todayStr,
             chargedAh = effectiveChargedAh,
@@ -201,6 +210,8 @@ class EnergyHistoryManager(
             dischargedKwh = effectiveDischargedKwh,
             minSoc = minSoc,
             maxSoc = maxSoc,
+            minAh = effectiveMinAh,
+            maxAh = effectiveMaxAh,
             lastUpdated = now
         )
 
@@ -270,6 +281,8 @@ class EnergyHistoryManager(
         val curRemaining = (if (b1Online) b1.remainingCapacityAh else 0f) +
                            (if (b2Online) b2.remainingCapacityAh else 0f)
         peakRemainingTotal = curRemaining
+        minAh = curRemaining
+        maxAh = curRemaining
 
         _todayEnergy.value = DailyEnergyRecord(
             date = todayStr,
@@ -279,6 +292,8 @@ class EnergyHistoryManager(
             dischargedKwh = 0f,
             minSoc = minSoc,
             maxSoc = maxSoc,
+            minAh = minAh,
+            maxAh = maxAh,
             lastUpdated = System.currentTimeMillis()
         )
         saveToPreferences()
@@ -295,6 +310,8 @@ class EnergyHistoryManager(
                 put("dischargedKwh", record.dischargedKwh.toDouble())
                 put("minSoc", minSoc)
                 put("maxSoc", maxSoc)
+                put("minAh", minAh.toDouble())
+                put("maxAh", maxAh.toDouble())
                 put("startSoc", startSoc)
                 put("peakRemainingTotal", peakRemainingTotal.toDouble())
                 put("maxCapacityGainChargedAh", maxCapacityGainChargedAh.toDouble())
@@ -328,6 +345,8 @@ class EnergyHistoryManager(
                     put("dischargedKwh", rec.dischargedKwh.toDouble())
                     put("minSoc", rec.minSoc)
                     put("maxSoc", rec.maxSoc)
+                    put("minAh", rec.minAh.toDouble())
+                    put("maxAh", rec.maxAh.toDouble())
                     put("lastUpdated", rec.lastUpdated)
                 }
                 array.put(obj)
@@ -356,6 +375,8 @@ class EnergyHistoryManager(
                             dischargedKwh = obj.optDouble("dischargedKwh", 0.0).toFloat(),
                             minSoc = obj.optInt("minSoc", 0),
                             maxSoc = obj.optInt("maxSoc", 0),
+                            minAh = obj.optDouble("minAh", 0.0).toFloat(),
+                            maxAh = obj.optDouble("maxAh", 0.0).toFloat(),
                             lastUpdated = obj.optLong("lastUpdated", 0L)
                         )
                     )
@@ -384,6 +405,8 @@ class EnergyHistoryManager(
                     liveDischargedKwh = obj.optDouble("liveDischargedKwh", 0.0).toFloat()
                     minSoc = obj.optInt("minSoc", 0)
                     maxSoc = obj.optInt("maxSoc", 0)
+                    minAh = obj.optDouble("minAh", 0.0).toFloat()
+                    maxAh = obj.optDouble("maxAh", 0.0).toFloat()
                     startSoc = obj.optInt("startSoc", minSoc)
                     peakRemainingTotal = obj.optDouble("peakRemainingTotal", 0.0).toFloat()
                     maxCapacityGainChargedAh = obj.optDouble("maxCapacityGainChargedAh", 0.0).toFloat()
@@ -396,6 +419,8 @@ class EnergyHistoryManager(
                         dischargedKwh = obj.optDouble("dischargedKwh", 0.0).toFloat(),
                         minSoc = minSoc,
                         maxSoc = maxSoc,
+                        minAh = minAh,
+                        maxAh = maxAh,
                         lastUpdated = obj.optLong("lastUpdated", 0L)
                     )
                 } else if (savedDate.isNotBlank()) {
@@ -408,6 +433,8 @@ class EnergyHistoryManager(
                         dischargedKwh = obj.optDouble("dischargedKwh", 0.0).toFloat(),
                         minSoc = obj.optInt("minSoc", 0),
                         maxSoc = obj.optInt("maxSoc", 0),
+                        minAh = obj.optDouble("minAh", 0.0).toFloat(),
+                        maxAh = obj.optDouble("maxAh", 0.0).toFloat(),
                         lastUpdated = obj.optLong("lastUpdated", 0L)
                     )
                     if (oldRecord.chargedAh > 0.05f || oldRecord.dischargedAh > 0.05f) {
