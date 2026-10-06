@@ -31,25 +31,31 @@ class EnergyHistoryManager(
 
     // Internal daily state
     private var currentDate: String = ""
-    private var b1StartCycleAh: Float = 0f
-    private var b2StartCycleAh: Float = 0f
     private var b1StartRemainingAh: Float = 0f
     private var b2StartRemainingAh: Float = 0f
     private var b1HasBaseline: Boolean = false
     private var b2HasBaseline: Boolean = false
+    private var startRemainingTotal: Float = 0f
+    private var lastKnownRemainingAh: Float = 0f
 
+    // Live continuous accumulation (while connected via Bluetooth)
     private var liveChargedAh: Float = 0f
     private var liveDischargedAh: Float = 0f
     private var liveChargedKwh: Float = 0f
     private var liveDischargedKwh: Float = 0f
 
+    // Offline catch-up accumulation (battery capacity delta while disconnected/app closed)
+    private var offlineChargedAh: Float = 0f
+    private var offlineDischargedAh: Float = 0f
+    private var offlineChargedKwh: Float = 0f
+    private var offlineDischargedKwh: Float = 0f
+
+    // Daily extremes
     private var startSoc: Int = 0
     private var minSoc: Int = 0
     private var maxSoc: Int = 0
     private var minAh: Float = 0f
     private var maxAh: Float = 0f
-    private var peakRemainingTotal: Float = 0f
-    private var maxCapacityGainChargedAh: Float = 0f
 
     private var lastIntegrationTimeMs: Long = 0L
     private var lastSaveTimeMs: Long = 0L
@@ -71,13 +77,9 @@ class EnergyHistoryManager(
         val b2Online = b2.voltage > 10f
         val bothOnline = b1Online && b2Online
 
-        // If dual BMS is configured, do not initialize baselines or track bank metrics until BOTH packs are online
-        if (isDualConfigured && !bothOnline) {
-            // If baselines were already established for both earlier today, continue live Coulomb counting
-            if (!b1HasBaseline || !b2HasBaseline) {
-                return
-            }
-        } else if (!isDualConfigured && !b1Online && !b2Online) {
+        // If dual BMS is configured, do not calculate bank metrics until BOTH packs are online
+        val isBankReady = if (isDualConfigured) bothOnline else (b1Online || b2Online)
+        if (!isBankReady) {
             return
         }
 
@@ -89,24 +91,49 @@ class EnergyHistoryManager(
             startNewDay(todayStr, b1, b2, bank, isDualConfigured)
         }
 
-        // 2. Establish baseline for B1 if first time connected today
+        val curRemainingTotal = (if (b1Online) b1.remainingCapacityAh else 0f) +
+                                (if (b2Online) b2.remainingCapacityAh else 0f)
+
+        // 2. Establish baseline if first time connected today
         if (b1Online && !b1HasBaseline) {
-            b1StartCycleAh = b1.totalChargingCycleAh
             b1StartRemainingAh = b1.remainingCapacityAh
             b1HasBaseline = true
         }
-
-        // 3. Establish baseline for B2 if first time connected today
         if (b2Online && !b2HasBaseline) {
-            b2StartCycleAh = b2.totalChargingCycleAh
             b2StartRemainingAh = b2.remainingCapacityAh
             b2HasBaseline = true
         }
+        if (startRemainingTotal <= 0.1f && curRemainingTotal > 0.1f) {
+            startRemainingTotal = curRemainingTotal
+            if (lastKnownRemainingAh <= 0.1f) {
+                lastKnownRemainingAh = curRemainingTotal
+            }
+        }
 
-        // 4. Live coulomb counting and energy integration while connected
-        if (lastIntegrationTimeMs > 0L) {
+        // 3. Energy Integration (Live Shunt Current vs Offline Capacity Catch-up)
+        val isReconnectionGap = (lastIntegrationTimeMs == 0L) || ((now - lastIntegrationTimeMs) > 15_000L)
+        val avgV = if (bank.voltage in 20f..150f) bank.voltage else 52.0f
+
+        if (isReconnectionGap) {
+            // Reconnected after being disconnected or app was closed
+            if (lastKnownRemainingAh > 0.1f && curRemainingTotal > 0.1f) {
+                val deltaAh = curRemainingTotal - lastKnownRemainingAh
+                if (deltaAh > 0.2f) { // Capacity gained while disconnected (solar charging into battery)
+                    offlineChargedAh += deltaAh
+                    offlineChargedKwh += (deltaAh * avgV) / 1000f
+                    Log.d("EnergyHistoryManager", "Offline charge catch-up: +${deltaAh}Ah (+${(deltaAh * avgV) / 1000f}kWh)")
+                } else if (deltaAh < -0.2f) { // Capacity lost while disconnected (loads discharging from battery)
+                    val dropAh = -deltaAh
+                    offlineDischargedAh += dropAh
+                    offlineDischargedKwh += (dropAh * avgV) / 1000f
+                    Log.d("EnergyHistoryManager", "Offline discharge catch-up: -${dropAh}Ah (-${(dropAh * avgV) / 1000f}kWh)")
+                }
+            }
+            lastKnownRemainingAh = curRemainingTotal
+        } else {
+            // Active continuous connection (interval <= 15 seconds): Live Coulomb counting
             val dtSeconds = (now - lastIntegrationTimeMs) / 1000f
-            if (dtSeconds in 0.1f..15f) { // Valid integration interval
+            if (dtSeconds in 0.1f..15f) {
                 val currentA = bank.current
                 val powerW = bank.power
 
@@ -124,80 +151,35 @@ class EnergyHistoryManager(
                     liveDischargedKwh += max(0f, dKwh)
                 }
             }
+            if (curRemainingTotal > 0.1f) {
+                lastKnownRemainingAh = curRemainingTotal
+            }
         }
         lastIntegrationTimeMs = now
-
-        // 5. Offline catch-up via BMS Hardware Odometer
-        var odoChargedAh = 0f
-        if (b1HasBaseline && b1.totalChargingCycleAh > b1StartCycleAh) {
-            odoChargedAh += (b1.totalChargingCycleAh - b1StartCycleAh)
-        }
-        if (b2HasBaseline && b2.totalChargingCycleAh > b2StartCycleAh) {
-            odoChargedAh += (b2.totalChargingCycleAh - b2StartCycleAh)
-        }
 
         // Total nominal capacity of the active bank
         val totalNominal = (if (b1Online) b1.nominalCapacityAh else 0f) +
                            (if (b2Online) b2.nominalCapacityAh else 0f)
         val bankCap = if (totalNominal > 20f) totalNominal else 200f
 
-        // Remaining capacity delta across the day
-        val curRemainingTotal = (if (b1Online) b1.remainingCapacityAh else 0f) +
-                                (if (b2Online) b2.remainingCapacityAh else 0f)
-        val startRemainingTotal = (if (b1HasBaseline) b1StartRemainingAh else 0f) +
-                                 (if (b2HasBaseline) b2StartRemainingAh else 0f)
-        val deltaRemainingAh = curRemainingTotal - startRemainingTotal
-
-        // 6. Update min and max SOC & Ah
+        // 4. Update min and max SOC & Ah for today
         val currentSoc = bank.capacityWeightedSoc
-        if (!isDualConfigured || bothOnline) {
-            if (currentSoc in 1..100) {
-                if (startSoc == 0) startSoc = currentSoc
-                minSoc = if (minSoc == 0) currentSoc else min(minSoc, currentSoc)
-                maxSoc = if (maxSoc == 0) currentSoc else max(maxSoc, currentSoc)
-            }
-            if (curRemainingTotal > 0.1f) {
-                minAh = if (minAh <= 0.1f) curRemainingTotal else min(minAh, curRemainingTotal)
-                maxAh = if (maxAh <= 0.1f) curRemainingTotal else max(maxAh, curRemainingTotal)
-            }
+        if (currentSoc in 1..100) {
+            if (startSoc == 0) startSoc = currentSoc
+            minSoc = if (minSoc == 0) currentSoc else min(minSoc, currentSoc)
+            maxSoc = if (maxSoc == 0) currentSoc else max(maxSoc, currentSoc)
+        }
+        if (curRemainingTotal > 0.1f) {
+            minAh = if (minAh <= 0.1f) curRemainingTotal else min(minAh, curRemainingTotal)
+            maxAh = if (maxAh <= 0.1f) curRemainingTotal else max(maxAh, curRemainingTotal)
         }
 
-        // Track peak remaining capacity seen today
-        if (curRemainingTotal > peakRemainingTotal) {
-            peakRemainingTotal = curRemainingTotal
-        }
+        // 5. Compute unified energy totals
+        val effectiveChargedAh = liveChargedAh + offlineChargedAh
+        val effectiveDischargedAh = liveDischargedAh + offlineDischargedAh
 
-        // 7. Offline Catch-Up: Calculate energy gained from BMS capacity & SOC growth
-        // Even when app was closed/away, the BMS tracks SOC and remaining Ah
-        val remainingCapGainAh = max(0f, deltaRemainingAh)
-        val socGainAh = if (minSoc in 1..100 && currentSoc in 1..100 && currentSoc >= minSoc) {
-            ((currentSoc - minSoc).toFloat() / 100f) * bankCap
-        } else 0f
-
-        val currentCapacityGain = max(remainingCapGainAh, socGainAh)
-        if (currentCapacityGain > maxCapacityGainChargedAh) {
-            maxCapacityGainChargedAh = currentCapacityGain
-        }
-
-        // Best unified charged Ah: takes the highest of live coulomb counting, BMS hardware odometer, or battery capacity gain
-        val effectiveChargedAh = max(liveChargedAh, max(odoChargedAh, maxCapacityGainChargedAh))
-
-        // Discharged Ah:
-        // Counts live shunt discharge, hardware odometer delta, or capacity drop from today's peak
-        val capDropDischargedAh = if (peakRemainingTotal > curRemainingTotal && curRemainingTotal > 0f) {
-            val ahDrop = peakRemainingTotal - curRemainingTotal
-            val socDrop = if (maxSoc > currentSoc && currentSoc in 1..100) {
-                ((maxSoc - currentSoc).toFloat() / 100f) * bankCap
-            } else 0f
-            max(ahDrop, socDrop)
-        } else 0f
-
-        val odoDischargedAh = if (odoChargedAh > 0f) max(0f, odoChargedAh - deltaRemainingAh) else 0f
-        val effectiveDischargedAh = max(liveDischargedAh, max(odoDischargedAh, capDropDischargedAh))
-
-        val avgV = if (bank.voltage in 20f..150f) bank.voltage else 52.0f
-        val effectiveChargedKwh = max(liveChargedKwh, (effectiveChargedAh * avgV) / 1000f)
-        val effectiveDischargedKwh = max(liveDischargedKwh, (effectiveDischargedAh * avgV) / 1000f)
+        val effectiveChargedKwh = max(liveChargedKwh + offlineChargedKwh, (effectiveChargedAh * avgV) / 1000f)
+        val effectiveDischargedKwh = max(liveDischargedKwh + offlineDischargedKwh, (effectiveDischargedAh * avgV) / 1000f)
 
         val effectiveMinAh = if (minAh > 0.1f) minAh else if (minSoc in 1..100) (minSoc.toFloat() / 100f) * bankCap else 0f
         val effectiveMaxAh = if (maxAh > 0.1f) maxAh else if (maxSoc in 1..100) (maxSoc.toFloat() / 100f) * bankCap else 0f
@@ -217,7 +199,7 @@ class EnergyHistoryManager(
 
         _todayEnergy.value = updatedRecord
 
-        // 8. Debounced persist to SharedPreferences every 10 seconds
+        // 6. Debounced persist to SharedPreferences every 10 seconds
         if (now - lastSaveTimeMs > 10_000L) {
             lastSaveTimeMs = now
             saveToPreferences()
@@ -241,31 +223,35 @@ class EnergyHistoryManager(
         liveDischargedAh = 0f
         liveChargedKwh = 0f
         liveDischargedKwh = 0f
-        maxCapacityGainChargedAh = 0f
+        offlineChargedAh = 0f
+        offlineDischargedAh = 0f
+        offlineChargedKwh = 0f
+        offlineDischargedKwh = 0f
 
         val b1Online = b1.voltage > 10f
         val b2Online = b2.voltage > 10f
         val bothOnline = b1Online && b2Online
 
         if (b1Online) {
-            b1StartCycleAh = b1.totalChargingCycleAh
             b1StartRemainingAh = b1.remainingCapacityAh
             b1HasBaseline = true
         } else {
-            b1StartCycleAh = 0f
             b1StartRemainingAh = 0f
             b1HasBaseline = false
         }
 
         if (b2Online) {
-            b2StartCycleAh = b2.totalChargingCycleAh
             b2StartRemainingAh = b2.remainingCapacityAh
             b2HasBaseline = true
         } else {
-            b2StartCycleAh = 0f
             b2StartRemainingAh = 0f
             b2HasBaseline = false
         }
+
+        val curRemaining = (if (b1Online) b1.remainingCapacityAh else 0f) +
+                           (if (b2Online) b2.remainingCapacityAh else 0f)
+        startRemainingTotal = curRemaining
+        lastKnownRemainingAh = curRemaining
 
         val currentSoc = bank.capacityWeightedSoc
         if ((!isDualConfigured || bothOnline) && currentSoc in 1..100) {
@@ -278,11 +264,9 @@ class EnergyHistoryManager(
             maxSoc = 0
         }
 
-        val curRemaining = (if (b1Online) b1.remainingCapacityAh else 0f) +
-                           (if (b2Online) b2.remainingCapacityAh else 0f)
-        peakRemainingTotal = curRemaining
         minAh = curRemaining
         maxAh = curRemaining
+        lastIntegrationTimeMs = System.currentTimeMillis()
 
         _todayEnergy.value = DailyEnergyRecord(
             date = todayStr,
@@ -313,10 +297,8 @@ class EnergyHistoryManager(
                 put("minAh", minAh.toDouble())
                 put("maxAh", maxAh.toDouble())
                 put("startSoc", startSoc)
-                put("peakRemainingTotal", peakRemainingTotal.toDouble())
-                put("maxCapacityGainChargedAh", maxCapacityGainChargedAh.toDouble())
-                put("b1StartCycleAh", b1StartCycleAh.toDouble())
-                put("b2StartCycleAh", b2StartCycleAh.toDouble())
+                put("startRemainingTotal", startRemainingTotal.toDouble())
+                put("lastKnownRemainingAh", lastKnownRemainingAh.toDouble())
                 put("b1StartRemainingAh", b1StartRemainingAh.toDouble())
                 put("b2StartRemainingAh", b2StartRemainingAh.toDouble())
                 put("b1HasBaseline", b1HasBaseline)
@@ -325,6 +307,10 @@ class EnergyHistoryManager(
                 put("liveDischargedAh", liveDischargedAh.toDouble())
                 put("liveChargedKwh", liveChargedKwh.toDouble())
                 put("liveDischargedKwh", liveDischargedKwh.toDouble())
+                put("offlineChargedAh", offlineChargedAh.toDouble())
+                put("offlineDischargedAh", offlineDischargedAh.toDouble())
+                put("offlineChargedKwh", offlineChargedKwh.toDouble())
+                put("offlineDischargedKwh", offlineDischargedKwh.toDouble())
                 put("lastUpdated", record.lastUpdated)
             }
             prefs.edit().putString("today_record", json.toString()).apply()
@@ -393,30 +379,44 @@ class EnergyHistoryManager(
 
                 if (savedDate == todayStr) {
                     currentDate = savedDate
-                    b1StartCycleAh = obj.optDouble("b1StartCycleAh", 0.0).toFloat()
-                    b2StartCycleAh = obj.optDouble("b2StartCycleAh", 0.0).toFloat()
+
+                    // Discard legacy buggy odometer values if present from prior builds
+                    val isLegacyBuggy = obj.has("b1StartCycleAh") && !obj.has("offlineChargedAh")
+
+                    if (!isLegacyBuggy) {
+                        liveChargedAh = obj.optDouble("liveChargedAh", 0.0).toFloat()
+                        liveDischargedAh = obj.optDouble("liveDischargedAh", 0.0).toFloat()
+                        liveChargedKwh = obj.optDouble("liveChargedKwh", 0.0).toFloat()
+                        liveDischargedKwh = obj.optDouble("liveDischargedKwh", 0.0).toFloat()
+                        offlineChargedAh = obj.optDouble("offlineChargedAh", 0.0).toFloat()
+                        offlineDischargedAh = obj.optDouble("offlineDischargedAh", 0.0).toFloat()
+                        offlineChargedKwh = obj.optDouble("offlineChargedKwh", 0.0).toFloat()
+                        offlineDischargedKwh = obj.optDouble("offlineDischargedKwh", 0.0).toFloat()
+                        lastKnownRemainingAh = obj.optDouble("lastKnownRemainingAh", 0.0).toFloat()
+                        startRemainingTotal = obj.optDouble("startRemainingTotal", 0.0).toFloat()
+                    }
+
                     b1StartRemainingAh = obj.optDouble("b1StartRemainingAh", 0.0).toFloat()
                     b2StartRemainingAh = obj.optDouble("b2StartRemainingAh", 0.0).toFloat()
                     b1HasBaseline = obj.optBoolean("b1HasBaseline", false)
                     b2HasBaseline = obj.optBoolean("b2HasBaseline", false)
-                    liveChargedAh = obj.optDouble("liveChargedAh", 0.0).toFloat()
-                    liveDischargedAh = obj.optDouble("liveDischargedAh", 0.0).toFloat()
-                    liveChargedKwh = obj.optDouble("liveChargedKwh", 0.0).toFloat()
-                    liveDischargedKwh = obj.optDouble("liveDischargedKwh", 0.0).toFloat()
                     minSoc = obj.optInt("minSoc", 0)
                     maxSoc = obj.optInt("maxSoc", 0)
                     minAh = obj.optDouble("minAh", 0.0).toFloat()
                     maxAh = obj.optDouble("maxAh", 0.0).toFloat()
                     startSoc = obj.optInt("startSoc", minSoc)
-                    peakRemainingTotal = obj.optDouble("peakRemainingTotal", 0.0).toFloat()
-                    maxCapacityGainChargedAh = obj.optDouble("maxCapacityGainChargedAh", 0.0).toFloat()
+
+                    val loadedChargedAh = if (isLegacyBuggy) 0f else obj.optDouble("chargedAh", 0.0).toFloat()
+                    val loadedDischargedAh = if (isLegacyBuggy) 0f else obj.optDouble("dischargedAh", 0.0).toFloat()
+                    val loadedChargedKwh = if (isLegacyBuggy) 0f else obj.optDouble("chargedKwh", 0.0).toFloat()
+                    val loadedDischargedKwh = if (isLegacyBuggy) 0f else obj.optDouble("dischargedKwh", 0.0).toFloat()
 
                     _todayEnergy.value = DailyEnergyRecord(
                         date = savedDate,
-                        chargedAh = obj.optDouble("chargedAh", 0.0).toFloat(),
-                        dischargedAh = obj.optDouble("dischargedAh", 0.0).toFloat(),
-                        chargedKwh = obj.optDouble("chargedKwh", 0.0).toFloat(),
-                        dischargedKwh = obj.optDouble("dischargedKwh", 0.0).toFloat(),
+                        chargedAh = loadedChargedAh,
+                        dischargedAh = loadedDischargedAh,
+                        chargedKwh = loadedChargedKwh,
+                        dischargedKwh = loadedDischargedKwh,
                         minSoc = minSoc,
                         maxSoc = maxSoc,
                         minAh = minAh,

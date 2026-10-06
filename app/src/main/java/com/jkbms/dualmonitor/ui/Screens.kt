@@ -273,74 +273,63 @@ fun TodayEnergyCard(
             HorizontalDivider(color = Color(0xFF1E353B), thickness = 1.dp)
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Net Balance & Daily SOC Range
-            Row(modifier = Modifier.fillMaxWidth()) {
+            // Daily SOC Range & Battery Capacity Range
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
-                    Text("NET BALANCE", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                    val net = record.netKwh
-                    val netColor = if (net >= 0f) Color(0xFF69F0AE) else Color(0xFFFF8A80)
-                    Text(
-                        formatNetEnergy(net),
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = netColor,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    val netAh = record.netAh
-                    Text(
-                        String.format(Locale.US, "%+.1f Ah", netAh),
-                        fontSize = 12.sp,
-                        color = if (netAh >= 0f) Color(0xFFA5D6A7) else Color(0xFFFFAB91),
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-                Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
-                    Text("DAILY SOC RANGE", style = MaterialTheme.typography.labelSmall, color = Color.Gray, textAlign = TextAlign.End)
+                    Text("DAILY SOC RANGE", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
                     val socText = if (record.minSoc > 0 || record.maxSoc > 0) {
                         "${record.minSoc}% → ${record.maxSoc}%"
                     } else "—"
                     Text(
                         socText,
-                        fontSize = 16.sp,
+                        fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
-                        fontFamily = FontFamily.Monospace,
-                        textAlign = TextAlign.End
+                        fontFamily = FontFamily.Monospace
                     )
-                    val totalCap = when {
-                        bank.nominalCapacityAh > 10f -> bank.nominalCapacityAh
-                        bank.remainingCapacityAh > 0f && bank.capacityWeightedSoc > 0 -> {
-                            bank.remainingCapacityAh / (bank.capacityWeightedSoc / 100f)
-                        }
-                        else -> 200f
-                    }
-                    val displayMinAh = when {
-                        record.minAh > 0.05f -> record.minAh
-                        record.minSoc > 0 -> (record.minSoc / 100f) * totalCap
-                        else -> 0f
-                    }
-                    val displayMaxAh = when {
-                        record.maxAh > 0.05f -> record.maxAh
-                        record.maxSoc > 0 -> (record.maxSoc / 100f) * totalCap
-                        else -> 0f
-                    }
+                }
 
-                    val ahText = when {
-                        displayMinAh > 0.05f && displayMaxAh > 0.05f -> {
-                            if (kotlin.math.abs(displayMaxAh - displayMinAh) > 0.05f) {
-                                String.format(Locale.US, "%.1f → %.1f Ah", displayMinAh, displayMaxAh)
-                            } else {
-                                String.format(Locale.US, "%.1f Ah", displayMinAh)
-                            }
-                        }
-                        displayMaxAh > 0.05f -> String.format(Locale.US, "%.1f Ah", displayMaxAh)
-                        displayMinAh > 0.05f -> String.format(Locale.US, "%.1f Ah", displayMinAh)
-                        else -> "—"
+                val totalCap = when {
+                    bank.nominalCapacityAh > 10f -> bank.nominalCapacityAh
+                    bank.remainingCapacityAh > 0f && bank.capacityWeightedSoc > 0 -> {
+                        bank.remainingCapacityAh / (bank.capacityWeightedSoc / 100f)
                     }
+                    else -> 200f
+                }
+                val displayMinAh = when {
+                    record.minAh > 0.05f -> record.minAh
+                    record.minSoc > 0 -> (record.minSoc / 100f) * totalCap
+                    else -> 0f
+                }
+                val displayMaxAh = when {
+                    record.maxAh > 0.05f -> record.maxAh
+                    record.maxSoc > 0 -> (record.maxSoc / 100f) * totalCap
+                    else -> 0f
+                }
 
+                val ahText = when {
+                    displayMinAh > 0.05f && displayMaxAh > 0.05f -> {
+                        if (kotlin.math.abs(displayMaxAh - displayMinAh) > 0.05f) {
+                            String.format(Locale.US, "%.1f → %.1f Ah", displayMinAh, displayMaxAh)
+                        } else {
+                            String.format(Locale.US, "%.1f Ah", displayMinAh)
+                        }
+                    }
+                    displayMaxAh > 0.05f -> String.format(Locale.US, "%.1f Ah", displayMaxAh)
+                    displayMinAh > 0.05f -> String.format(Locale.US, "%.1f Ah", displayMinAh)
+                    else -> "—"
+                }
+
+                Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                    Text("CAPACITY RANGE", style = MaterialTheme.typography.labelSmall, color = Color.Gray, textAlign = TextAlign.End)
                     Text(
                         ahText,
-                        fontSize = 12.sp,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
                         color = Color(0xFFCFD8DC),
                         fontFamily = FontFamily.Monospace,
                         textAlign = TextAlign.End
@@ -703,16 +692,6 @@ fun EnergyHistoryDialog(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(6.dp))
-                        val net = activeSelected.netKwh
-                        val netAh = activeSelected.netAh
-                        Text(
-                            text = "Net Balance: ${formatNetEnergy(net)} (${String.format(Locale.US, "%+.1f Ah", netAh)})",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (net >= 0f) Color(0xFF69F0AE) else Color(0xFFFF8A80),
-                            fontFamily = FontFamily.Monospace
-                        )
                     }
                 }
 
@@ -784,14 +763,6 @@ fun EnergyHistoryDialog(
                                         fontFamily = FontFamily.Monospace
                                     )
                                 }
-
-                                val net = item.netKwh
-                                Text(
-                                    text = "Net: ${formatNetEnergy(net)}",
-                                    fontSize = 11.sp,
-                                    color = if (net >= 0f) Color(0xFF80CBC4) else Color(0xFFFFAB91),
-                                    fontFamily = FontFamily.Monospace
-                                )
                             }
                         }
                     }
