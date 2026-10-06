@@ -31,7 +31,9 @@ jobs:
 
       - name: Dump Failure Logs
         if: failure()
-        run: tail -n 100 build.log
+        run: |
+          echo "=== COMPILATION ERRORS ==="
+          grep -E -C 3 "e: |error:|FAILED" build.log || tail -n 250 build.log
 
       - name: Upload Build Log on Failure
         if: failure()
