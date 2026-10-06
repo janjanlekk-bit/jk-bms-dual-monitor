@@ -57,27 +57,41 @@ class EnergyHistoryManager(
     }
 
     @Synchronized
-    fun update(b1: BmsData, b2: BmsData, bank: TotalBankData) {
+    fun update(b1: BmsData, b2: BmsData, bank: TotalBankData, isDualConfigured: Boolean = false) {
         val todayStr = getTodayDateString()
         val now = System.currentTimeMillis()
+
+        val b1Online = b1.voltage > 10f
+        val b2Online = b2.voltage > 10f
+        val bothOnline = b1Online && b2Online
+
+        // If dual BMS is configured, do not initialize baselines or track bank metrics until BOTH packs are online
+        if (isDualConfigured && !bothOnline) {
+            // If baselines were already established for both earlier today, continue live Coulomb counting
+            if (!b1HasBaseline || !b2HasBaseline) {
+                return
+            }
+        } else if (!isDualConfigured && !b1Online && !b2Online) {
+            return
+        }
 
         // 1. Check for midnight date change / day rollover
         if (currentDate.isNotBlank() && currentDate != todayStr) {
             archivePreviousDay()
-            startNewDay(todayStr, b1, b2, bank)
+            startNewDay(todayStr, b1, b2, bank, isDualConfigured)
         } else if (currentDate.isBlank()) {
-            startNewDay(todayStr, b1, b2, bank)
+            startNewDay(todayStr, b1, b2, bank, isDualConfigured)
         }
 
         // 2. Establish baseline for B1 if first time connected today
-        if (b1.voltage > 10f && !b1HasBaseline) {
+        if (b1Online && !b1HasBaseline) {
             b1StartCycleAh = b1.totalChargingCycleAh
             b1StartRemainingAh = b1.remainingCapacityAh
             b1HasBaseline = true
         }
 
         // 3. Establish baseline for B2 if first time connected today
-        if (b2.voltage > 10f && !b2HasBaseline) {
+        if (b2Online && !b2HasBaseline) {
             b2StartCycleAh = b2.totalChargingCycleAh
             b2StartRemainingAh = b2.remainingCapacityAh
             b2HasBaseline = true
@@ -117,8 +131,8 @@ class EnergyHistoryManager(
         }
 
         // Remaining capacity delta across the day
-        val curRemainingTotal = (if (b1.voltage > 10f) b1.remainingCapacityAh else 0f) +
-                                (if (b2.voltage > 10f) b2.remainingCapacityAh else 0f)
+        val curRemainingTotal = (if (b1Online) b1.remainingCapacityAh else 0f) +
+                                (if (b2Online) b2.remainingCapacityAh else 0f)
         val startRemainingTotal = (if (b1HasBaseline) b1StartRemainingAh else 0f) +
                                  (if (b2HasBaseline) b2StartRemainingAh else 0f)
         val deltaRemainingAh = curRemainingTotal - startRemainingTotal
@@ -137,10 +151,32 @@ class EnergyHistoryManager(
         val effectiveDischargedKwh = max(liveDischargedKwh, (effectiveDischargedAh * avgV) / 1000f)
 
         // 6. Update min and max SOC
-        val currentSoc = bank.capacityWeightedSoc
-        if (currentSoc in 1..100) {
-            minSoc = if (minSoc == 0) currentSoc else min(minSoc, currentSoc)
-            maxSoc = if (maxSoc == 0) currentSoc else max(maxSoc, currentSoc)
+        // Only update bank SOC range when bank is complete (both online if dual configured)
+        if (!isDualConfigured || bothOnline) {
+            val currentSoc = bank.capacityWeightedSoc
+            if (currentSoc in 1..100) {
+                val totalNominal = (if (b1Online) b1.nominalCapacityAh else 0f) +
+                                   (if (b2Online) b2.nominalCapacityAh else 0f)
+                val bankCap = if (totalNominal > 20f) totalNominal else 200f
+
+                // Theoretical minimum SOC given the actual charging energy today:
+                // An SOC rise cannot exceed (chargedAh / bankCap * 100) + small margin
+                val maxPossibleSocRise = ((effectiveChargedAh / bankCap) * 100f).toInt()
+                val theoreticalMinSoc = (currentSoc - maxPossibleSocRise).coerceIn(1, 100)
+
+                if (minSoc in 1..100) {
+                    if (minSoc < theoreticalMinSoc - 3 && effectiveDischargedAh < 2.0f) {
+                        // Healing transient corruption: minSoc was artificially low due to single-pack connection glitch
+                        minSoc = theoreticalMinSoc
+                    } else {
+                        minSoc = min(minSoc, currentSoc)
+                    }
+                } else {
+                    minSoc = currentSoc
+                }
+
+                maxSoc = if (maxSoc == 0) currentSoc else max(maxSoc, currentSoc)
+            }
         }
 
         val updatedRecord = DailyEnergyRecord(
@@ -174,14 +210,18 @@ class EnergyHistoryManager(
         }
     }
 
-    private fun startNewDay(todayStr: String, b1: BmsData, b2: BmsData, bank: TotalBankData) {
+    private fun startNewDay(todayStr: String, b1: BmsData, b2: BmsData, bank: TotalBankData, isDualConfigured: Boolean = false) {
         currentDate = todayStr
         liveChargedAh = 0f
         liveDischargedAh = 0f
         liveChargedKwh = 0f
         liveDischargedKwh = 0f
 
-        if (b1.voltage > 10f) {
+        val b1Online = b1.voltage > 10f
+        val b2Online = b2.voltage > 10f
+        val bothOnline = b1Online && b2Online
+
+        if (b1Online) {
             b1StartCycleAh = b1.totalChargingCycleAh
             b1StartRemainingAh = b1.remainingCapacityAh
             b1HasBaseline = true
@@ -191,7 +231,7 @@ class EnergyHistoryManager(
             b1HasBaseline = false
         }
 
-        if (b2.voltage > 10f) {
+        if (b2Online) {
             b2StartCycleAh = b2.totalChargingCycleAh
             b2StartRemainingAh = b2.remainingCapacityAh
             b2HasBaseline = true
@@ -202,8 +242,13 @@ class EnergyHistoryManager(
         }
 
         val currentSoc = bank.capacityWeightedSoc
-        minSoc = if (currentSoc in 1..100) currentSoc else 0
-        maxSoc = if (currentSoc in 1..100) currentSoc else 0
+        if ((!isDualConfigured || bothOnline) && currentSoc in 1..100) {
+            minSoc = currentSoc
+            maxSoc = currentSoc
+        } else {
+            minSoc = 0
+            maxSoc = 0
+        }
 
         _todayEnergy.value = DailyEnergyRecord(
             date = todayStr,

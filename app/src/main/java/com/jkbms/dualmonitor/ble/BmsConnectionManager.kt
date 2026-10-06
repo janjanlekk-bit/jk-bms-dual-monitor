@@ -172,9 +172,15 @@ class BmsConnectionManager(context: Context) {
             combine(bms1.bmsState, bms2.bmsState, totalBankState) { b1, b2, bank ->
                 Triple(b1, b2, bank)
             }.collect { (b1, b2, bank) ->
-                energyHistory.update(b1, b2, bank)
+                energyHistory.update(b1, b2, bank, isDualConfigured())
             }
         }
+    }
+
+    fun isDualConfigured(): Boolean {
+        val s1 = prefs.getString("b1_mac", null)
+        val s2 = prefs.getString("b2_mac", null)
+        return !s1.isNullOrBlank() && !s2.isNullOrBlank()
     }
 
     fun assignB1(address: String) {
