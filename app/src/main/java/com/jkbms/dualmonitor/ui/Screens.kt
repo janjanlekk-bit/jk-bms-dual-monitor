@@ -233,7 +233,7 @@ fun TodayEnergyCard(
                 Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
                     Text("SOLAR CHARGED", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
                     Text(
-                        String.format("+%.2f kWh", record.chargedKwh),
+                        formatEnergy(record.chargedKwh, "+"),
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF00E676),
@@ -249,7 +249,7 @@ fun TodayEnergyCard(
                 Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
                     Text("LOAD CONSUMED", style = MaterialTheme.typography.labelSmall, color = Color.Gray, textAlign = TextAlign.End)
                     Text(
-                        String.format("-%.2f kWh", record.dischargedKwh),
+                        formatEnergy(record.dischargedKwh, "-"),
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFFFF9100),
@@ -275,10 +275,9 @@ fun TodayEnergyCard(
                 Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
                     Text("NET BALANCE", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
                     val net = record.netKwh
-                    val sign = if (net > 0f) "+" else ""
                     val netColor = if (net >= 0f) Color(0xFF69F0AE) else Color(0xFFFF8A80)
                     Text(
-                        String.format("%s%.2f kWh", sign, net),
+                        formatNetEnergy(net),
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = netColor,
@@ -389,7 +388,7 @@ fun MonthlyEnergyBarChart(
                 }
             }
             Text(
-                "Peak: ${String.format("%.1f", maxKwh)} kWh",
+                "Peak: ${formatEnergy(maxKwh)}",
                 color = Color.Gray,
                 fontSize = 10.sp,
                 fontFamily = FontFamily.Monospace
@@ -598,7 +597,7 @@ fun EnergyHistoryDialog(
                             Column {
                                 Text("SOLAR YIELD", fontSize = 10.sp, color = Color.Gray)
                                 Text(
-                                    String.format("+%.2f kWh", activeSelected.chargedKwh),
+                                    formatEnergy(activeSelected.chargedKwh, "+"),
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFF00E676),
@@ -614,7 +613,7 @@ fun EnergyHistoryDialog(
                             Column(horizontalAlignment = Alignment.End) {
                                 Text("LOAD CONSUMED", fontSize = 10.sp, color = Color.Gray, textAlign = TextAlign.End)
                                 Text(
-                                    String.format("-%.2f kWh", activeSelected.dischargedKwh),
+                                    formatEnergy(activeSelected.dischargedKwh, "-"),
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFFFF9100),
@@ -633,9 +632,8 @@ fun EnergyHistoryDialog(
 
                         Spacer(modifier = Modifier.height(6.dp))
                         val net = activeSelected.netKwh
-                        val sign = if (net > 0f) "+" else ""
                         Text(
-                            text = String.format("Net Balance: %s%.2f kWh", sign, net),
+                            text = "Net Balance: ${formatNetEnergy(net)}",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = if (net >= 0f) Color(0xFF69F0AE) else Color(0xFFFF8A80),
@@ -700,13 +698,13 @@ fun EnergyHistoryDialog(
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text(
-                                        String.format("+%.2f kWh (%.1f Ah)", item.chargedKwh, item.chargedAh),
+                                        "${formatEnergy(item.chargedKwh, "+")} (${String.format("%.1f", item.chargedAh)} Ah)",
                                         color = Color(0xFF00E676),
                                         fontSize = 12.sp,
                                         fontFamily = FontFamily.Monospace
                                     )
                                     Text(
-                                        String.format("-%.2f kWh (%.1f Ah)", item.dischargedKwh, item.dischargedAh),
+                                        "${formatEnergy(item.dischargedKwh, "-")} (${String.format("%.1f", item.dischargedAh)} Ah)",
                                         color = Color(0xFFFF9100),
                                         fontSize = 12.sp,
                                         fontFamily = FontFamily.Monospace
@@ -714,9 +712,8 @@ fun EnergyHistoryDialog(
                                 }
 
                                 val net = item.netKwh
-                                val sign = if (net > 0f) "+" else ""
                                 Text(
-                                    text = String.format("Net: %s%.2f kWh", sign, net),
+                                    text = "Net: ${formatNetEnergy(net)}",
                                     fontSize = 11.sp,
                                     color = if (net >= 0f) Color(0xFF80CBC4) else Color(0xFFFFAB91),
                                     fontFamily = FontFamily.Monospace
@@ -774,6 +771,27 @@ fun buildMonthDays(
 fun getMonthHeaderTitle(): String {
     val cal = Calendar.getInstance()
     return SimpleDateFormat("MMMM yyyy", Locale.US).format(cal.time).uppercase()
+}
+
+fun formatEnergy(kwh: Float, prefix: String = ""): String {
+    val absKwh = kotlin.math.abs(kwh)
+    val wh = absKwh * 1000f
+    return if (absKwh < 1.0f) {
+        if (wh < 0.5f && absKwh < 0.0005f) {
+            "${prefix}0 Wh"
+        } else if (wh < 10f) {
+            String.format(Locale.US, "%s%.1f Wh", prefix, wh)
+        } else {
+            String.format(Locale.US, "%s%.0f Wh", prefix, wh)
+        }
+    } else {
+        String.format(Locale.US, "%s%.2f kWh", prefix, absKwh)
+    }
+}
+
+fun formatNetEnergy(kwh: Float): String {
+    val sign = if (kwh > 0.0005f) "+" else if (kwh < -0.0005f) "-" else ""
+    return formatEnergy(kwh, prefix = sign)
 }
 
 fun formatDisplayDate(dateStr: String): String {
