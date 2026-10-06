@@ -375,7 +375,7 @@ fun SolarNodeWidget(
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterVertically
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -422,7 +422,7 @@ fun CenterHubWidget(isCharging: Boolean, isDischarging: Boolean) {
             .border(2.dp, hubColor, CircleShape),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterVertically) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text("⚡", fontSize = 18.sp)
             Text("DC BUS", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = hubColor)
         }
@@ -452,7 +452,7 @@ fun BatteryNodeWidget(
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterVertically
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -513,7 +513,7 @@ fun HouseNodeWidget(
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterVertically
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
