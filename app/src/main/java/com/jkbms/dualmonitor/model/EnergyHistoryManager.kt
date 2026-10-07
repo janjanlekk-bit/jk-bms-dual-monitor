@@ -162,24 +162,51 @@ class EnergyHistoryManager(
                            (if (b2Online) b2.nominalCapacityAh else 0f)
         val bankCap = if (totalNominal > 20f) totalNominal else 200f
 
-        // 4. Update min and max SOC & Ah for today
-        val currentSoc = bank.capacityWeightedSoc
-        if (currentSoc in 1..100) {
-            if (startSoc == 0) startSoc = currentSoc
-            minSoc = if (minSoc == 0) currentSoc else min(minSoc, currentSoc)
-            maxSoc = if (maxSoc == 0) currentSoc else max(maxSoc, currentSoc)
-        }
-        if (curRemainingTotal > 0.1f) {
-            minAh = if (minAh <= 0.1f) curRemainingTotal else min(minAh, curRemainingTotal)
-            maxAh = if (maxAh <= 0.1f) curRemainingTotal else max(maxAh, curRemainingTotal)
-        }
-
-        // 5. Compute unified energy totals
+        // 4. Compute unified energy totals
         val effectiveChargedAh = liveChargedAh + offlineChargedAh
         val effectiveDischargedAh = liveDischargedAh + offlineDischargedAh
 
         val effectiveChargedKwh = max(liveChargedKwh + offlineChargedKwh, (effectiveChargedAh * avgV) / 1000f)
         val effectiveDischargedKwh = max(liveDischargedKwh + offlineDischargedKwh, (effectiveDischargedAh * avgV) / 1000f)
+
+        // 5. Update min and max SOC & Ah based on the day's solar cycle
+        val currentSoc = bank.capacityWeightedSoc
+        if (currentSoc in 1..100) {
+            if (startSoc == 0) startSoc = currentSoc
+
+            if (effectiveChargedAh <= 0.05f) {
+                // Pre-dawn / night discharge: No solar charging has occurred yet today.
+                // Keep min & max aligned with current battery level so midnight residual levels don't create false daily highs.
+                minSoc = currentSoc
+                maxSoc = currentSoc
+            } else {
+                // Solar charging has begun:
+                // minSoc locks in the morning low (or lower if dipped), and maxSoc climbs with solar charge.
+                minSoc = if (minSoc == 0) currentSoc else min(minSoc, currentSoc)
+                maxSoc = if (maxSoc == 0) currentSoc else max(maxSoc, currentSoc)
+
+                // Sanity guard against stale pre-dawn max values:
+                val maxPossibleSolarSoc = minSoc + ((effectiveChargedAh / bankCap) * 100f).toInt() + 3
+                if (maxSoc > maxPossibleSolarSoc) {
+                    maxSoc = max(minSoc, currentSoc)
+                }
+            }
+        }
+
+        if (curRemainingTotal > 0.1f) {
+            if (effectiveChargedAh <= 0.05f) {
+                minAh = curRemainingTotal
+                maxAh = curRemainingTotal
+            } else {
+                minAh = if (minAh <= 0.1f) curRemainingTotal else min(minAh, curRemainingTotal)
+                maxAh = if (maxAh <= 0.1f) curRemainingTotal else max(maxAh, curRemainingTotal)
+
+                val maxPossibleSolarAh = minAh + effectiveChargedAh + 2f
+                if (maxAh > maxPossibleSolarAh) {
+                    maxAh = max(minAh, curRemainingTotal)
+                }
+            }
+        }
 
         val effectiveMinAh = if (minAh > 0.1f) minAh else if (minSoc in 1..100) (minSoc.toFloat() / 100f) * bankCap else 0f
         val effectiveMaxAh = if (maxAh > 0.1f) maxAh else if (maxSoc in 1..100) (maxSoc.toFloat() / 100f) * bankCap else 0f
@@ -410,6 +437,18 @@ class EnergyHistoryManager(
                     val loadedDischargedAh = if (isLegacyBuggy) 0f else obj.optDouble("dischargedAh", 0.0).toFloat()
                     val loadedChargedKwh = if (isLegacyBuggy) 0f else obj.optDouble("chargedKwh", 0.0).toFloat()
                     val loadedDischargedKwh = if (isLegacyBuggy) 0f else obj.optDouble("dischargedKwh", 0.0).toFloat()
+
+                    // Sanity guard against stale pre-dawn max values from older builds
+                    if (loadedChargedAh > 0.05f) {
+                        val maxPossibleSoc = minSoc + ((loadedChargedAh / 190f) * 100f).toInt() + 3
+                        if (maxSoc > maxPossibleSoc) {
+                            maxSoc = minSoc + ((loadedChargedAh / 190f) * 100f).toInt()
+                        }
+                        val maxPossibleAh = minAh + loadedChargedAh + 2f
+                        if (maxAh > maxPossibleAh) {
+                            maxAh = minAh + loadedChargedAh
+                        }
+                    }
 
                     _todayEnergy.value = DailyEnergyRecord(
                         date = savedDate,

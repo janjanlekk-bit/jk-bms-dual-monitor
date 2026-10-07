@@ -8,12 +8,16 @@ android {
     namespace = "com.jkbms.dualmonitor"
     compileSdk = 34
 
+    val runNumber = (project.findProperty("versionCode") as? String)?.toIntOrNull()
+        ?: System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
+        ?: 28
+
     defaultConfig {
         applicationId = "com.jkbms.dualmonitor"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = runNumber
+        versionName = "0.1.$runNumber"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

@@ -25,9 +25,11 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build APKs (Release & Debug)
+        env:
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: |
           set -o pipefail
-          ./gradlew assembleRelease assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log
+          ./gradlew assembleRelease assembleDebug -PversionCode=${{ github.run_number }} --no-daemon --stacktrace 2>&1 | tee build.log
 
       - name: Dump Failure Logs
         if: failure()
