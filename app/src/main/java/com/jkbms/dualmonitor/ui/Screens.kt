@@ -33,6 +33,7 @@ import com.jkbms.dualmonitor.model.DailyEnergyRecord
 import com.jkbms.dualmonitor.model.TotalBankData
 import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
 import java.util.Locale
 
 @Composable
@@ -484,10 +485,13 @@ fun MonthlyEnergyBarChart(
     modifier: Modifier = Modifier,
     compact: Boolean = false
 ) {
-    val maxKwh = maxOf(
-        monthDays.maxOfOrNull { maxOf(it.chargedKwh, it.dischargedKwh) } ?: 0f,
-        5.0f
-    )
+    val maxVal = monthDays.maxOfOrNull { maxOf(it.chargedKwh, it.dischargedKwh) } ?: 0f
+    val maxKwh = when {
+        maxVal > 4.0f -> maxVal * 1.15f
+        maxVal > 1.5f -> 5.0f
+        maxVal > 0.4f -> 2.0f
+        else -> 1.0f
+    }
     val todayStr = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date()) }
     val scrollState = rememberScrollState()
 
@@ -519,7 +523,7 @@ fun MonthlyEnergyBarChart(
                 }
             }
             Text(
-                "Peak: ${formatEnergy(maxKwh)}",
+                if (maxVal > 0.005f) "Peak: ${formatEnergy(maxVal)}" else "Scale: ${formatEnergy(maxKwh)}",
                 color = Color.Gray,
                 fontSize = 10.sp,
                 fontFamily = FontFamily.Monospace
@@ -885,9 +889,10 @@ fun buildMonthDays(
     for (rec in historyList) {
         if (rec.date.isNotBlank()) recordsByDate[rec.date] = rec
     }
-    if (todayRecord.date.isNotBlank()) {
-        recordsByDate[todayRecord.date] = todayRecord
-    }
+    val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+    val effectiveTodayDate = if (todayRecord.date.isNotBlank()) todayRecord.date else todayStr
+    val populatedTodayRecord = if (todayRecord.date.isBlank()) todayRecord.copy(date = effectiveTodayDate) else todayRecord
+    recordsByDate[effectiveTodayDate] = populatedTodayRecord
 
     val cal = Calendar.getInstance()
     val year = cal.get(Calendar.YEAR)
@@ -1011,7 +1016,7 @@ fun CombinedBatteryPacksCard(
                 ) {
                     Text("🔍", fontSize = 13.sp)
                     Text(
-                        "INSPECT BATTERIES (OFFICIAL JK VIEW)",
+                        "INSPECT BATTERIES",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp

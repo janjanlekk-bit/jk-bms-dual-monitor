@@ -11,11 +11,15 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class Esp32GatewayClient(
     private val context: Context,
     private val scope: CoroutineScope,
-    private val onDataReceived: (b1: BmsData, b2: BmsData, bank: TotalBankData, daily: DailyEnergyRecord) -> Unit
+    private val onDataReceived: (b1: BmsData, b2: BmsData, bank: TotalBankData, daily: DailyEnergyRecord) -> Unit,
+    private val onHistoryReceived: ((yesterday: DailyEnergyRecord) -> Unit)? = null
 ) {
     private val prefs = context.getSharedPreferences("jk_bms_prefs", Context.MODE_PRIVATE)
 
@@ -53,6 +57,7 @@ class Esp32GatewayClient(
     fun startPolling() {
         if (pollJob?.isActive == true) return
         pollJob = scope.launch(Dispatchers.IO) {
+            var pollCount = 0
             while (isActive) {
                 try {
                     val statusJson = fetchJson("http://${_gatewayIp.value}/api/status")
@@ -63,12 +68,45 @@ class Esp32GatewayClient(
                     } else {
                         handleGatewayFailure()
                     }
+
+                    pollCount++
+                    if (pollCount % 20 == 1 && _isGatewayConnected.value) {
+                        fetchAndDispatchHistory()
+                    }
                 } catch (e: Exception) {
                     handleGatewayFailure()
                 }
                 delay(1200) // Poll every 1.2 seconds
             }
         }
+    }
+
+    private fun fetchAndDispatchHistory() {
+        try {
+            val histJson = fetchJson("http://${_gatewayIp.value}/api/history")
+            if (histJson != null) {
+                val hRoot = JSONObject(histJson)
+                val yObj = hRoot.optJSONObject("yesterday")
+                if (yObj != null) {
+                    val yDate = yObj.optString("date", "")
+                    if (yDate.isNotBlank()) {
+                        val yRecord = DailyEnergyRecord(
+                            date = yDate,
+                            chargedAh = yObj.optDouble("solarChargedAh", 0.0).toFloat(),
+                            chargedKwh = yObj.optDouble("solarChargedKwh", 0.0).toFloat(),
+                            dischargedAh = yObj.optDouble("loadConsumedAh", 0.0).toFloat(),
+                            dischargedKwh = yObj.optDouble("loadConsumedKwh", 0.0).toFloat(),
+                            minSoc = yObj.optInt("minSoc", 0),
+                            maxSoc = yObj.optInt("maxSoc", 0),
+                            minAh = yObj.optDouble("minAh", 0.0).toFloat(),
+                            maxAh = yObj.optDouble("maxAh", 0.0).toFloat(),
+                            lastUpdated = System.currentTimeMillis()
+                        )
+                        onHistoryReceived?.invoke(yRecord)
+                    }
+                }
+            }
+        } catch (_: Exception) {}
     }
 
     private fun handleGatewayFailure() {
@@ -118,8 +156,10 @@ class Esp32GatewayClient(
             TotalBankData()
         }
 
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         val dailyRecord = if (bankObj != null) {
             DailyEnergyRecord(
+                date = bankObj.optString("date", todayStr).ifBlank { todayStr },
                 chargedAh = bankObj.optDouble("solarChargedAh", 0.0).toFloat(),
                 chargedKwh = bankObj.optDouble("solarChargedKwh", 0.0).toFloat(),
                 dischargedAh = bankObj.optDouble("loadConsumedAh", 0.0).toFloat(),
@@ -131,7 +171,7 @@ class Esp32GatewayClient(
                 lastUpdated = System.currentTimeMillis()
             )
         } else {
-            DailyEnergyRecord()
+            DailyEnergyRecord(date = todayStr)
         }
 
         // 2. Battery 1

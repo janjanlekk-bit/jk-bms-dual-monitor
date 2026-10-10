@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,7 +28,9 @@ import androidx.compose.ui.unit.sp
 import com.jkbms.dualmonitor.model.BmsData
 import com.jkbms.dualmonitor.model.CellData
 import com.jkbms.dualmonitor.model.ConnectionStatus
+import kotlinx.coroutines.launch
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun OfficialJkInspectionScreen(
     b1: BmsData,
@@ -36,7 +40,8 @@ fun OfficialJkInspectionScreen(
 ) {
     var selectedSlot by remember { mutableStateOf(initialSlot) }
     val currentBms = if (selectedSlot == "B1") b1 else b2
-    var activeTab by remember { mutableStateOf(0) } // 0: Status, 1: Cells, 2: Safety Limits
+    val pagerState = rememberPagerState(initialPage = 0) { 3 }
+    val coroutineScope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
@@ -127,39 +132,14 @@ fun OfficialJkInspectionScreen(
                     )
                 }
                 val isOnline = currentBms.connectionStatus == ConnectionStatus.CONNECTED
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    // Online / Offline Indicator
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Box(modifier = Modifier.size(7.dp).background(if (isOnline) Color(0xFF00E676) else Color(0xFFFF5252), CircleShape))
-                        Text(
-                            text = if (isOnline) "ONLINE" else "OFFLINE",
-                            color = if (isOnline) Color(0xFF00E676) else Color(0xFFFF5252),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp
-                        )
-                    }
-
-                    // Clean, unclipped Read-Only Security Badge
-                    Row(
-                        modifier = Modifier
-                            .background(Color(0xFF132A1C), RoundedCornerShape(8.dp))
-                            .border(1.dp, Color(0xFF00E676).copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text("🔒", fontSize = 10.sp)
-                        Text(
-                            text = "READ-ONLY",
-                            color = Color(0xFF69F0AE),
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1
-                        )
-                    }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box(modifier = Modifier.size(8.dp).background(if (isOnline) Color(0xFF00E676) else Color(0xFFFF5252), CircleShape))
+                    Text(
+                        text = if (isOnline) "ONLINE" else "OFFLINE",
+                        color = if (isOnline) Color(0xFF00E676) else Color(0xFFFF5252),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp
+                    )
                 }
             }
         }
@@ -176,13 +156,17 @@ fun OfficialJkInspectionScreen(
         ) {
             val tabs = listOf("📊 STATUS", "🔋 CELLS (16S)", "🛡️ SAFETY LIMITS")
             tabs.forEachIndexed { idx, label ->
-                val isSelected = activeTab == idx
+                val isSelected = pagerState.currentPage == idx
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .clip(RoundedCornerShape(8.dp))
                         .background(if (isSelected) Color(0xFF232D3F) else Color.Transparent)
-                        .clickable { activeTab = idx }
+                        .clickable {
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(idx)
+                            }
+                        }
                         .padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -198,9 +182,12 @@ fun OfficialJkInspectionScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // 4. Tab Content
-        Box(modifier = Modifier.fillMaxSize()) {
-            when (activeTab) {
+        // 4. Tab Content with horizontal swipe
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize()
+        ) { page ->
+            when (page) {
                 0 -> JkStatusTab(bms = currentBms)
                 1 -> JkCellsTab(bms = currentBms)
                 2 -> JkSafetyLimitsTab(bms = currentBms)

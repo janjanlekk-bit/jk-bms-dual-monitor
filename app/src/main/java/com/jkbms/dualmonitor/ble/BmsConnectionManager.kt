@@ -24,6 +24,9 @@ class BmsConnectionManager(context: Context) {
             bms1.updateFromExternal(gB1)
             bms2.updateFromExternal(gB2)
             energyHistory.syncFromGateway(gDaily)
+        },
+        onHistoryReceived = { gYesterday ->
+            energyHistory.syncYesterdayFromGateway(gYesterday)
         }
     )
 

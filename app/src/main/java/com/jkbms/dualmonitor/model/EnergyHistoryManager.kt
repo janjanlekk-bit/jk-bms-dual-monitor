@@ -568,6 +568,45 @@ class EnergyHistoryManager(
 
     @Synchronized
     fun syncFromGateway(record: DailyEnergyRecord) {
-        _todayEnergy.value = record
+        val todayStr = if (record.date.isNotBlank()) record.date else getTodayDateString()
+        val completeRecord = if (record.date.isBlank()) record.copy(date = todayStr) else record
+
+        // Check midnight / date rollover
+        if (currentDate.isNotBlank() && currentDate != completeRecord.date) {
+            archivePreviousDay()
+        }
+        currentDate = completeRecord.date
+
+        if (completeRecord.minSoc > 0) minSoc = completeRecord.minSoc
+        if (completeRecord.maxSoc > 0) maxSoc = completeRecord.maxSoc
+        if (completeRecord.minAh > 0.1f) minAh = completeRecord.minAh
+        if (completeRecord.maxAh > 0.1f) maxAh = completeRecord.maxAh
+
+        _todayEnergy.value = completeRecord
+
+        val now = System.currentTimeMillis()
+        if (now - lastSaveTimeMs > 10_000L) {
+            lastSaveTimeMs = now
+            saveToPreferences()
+        }
+    }
+
+    @Synchronized
+    fun syncYesterdayFromGateway(yesterday: DailyEnergyRecord) {
+        if (yesterday.date.isBlank()) return
+        if (yesterday.chargedAh <= 0.05f && yesterday.dischargedAh <= 0.05f && yesterday.chargedKwh <= 0.005f && yesterday.dischargedKwh <= 0.005f) {
+            return
+        }
+        val currentList = _historyList.value.toMutableList()
+        val existingIndex = currentList.indexOfFirst { it.date == yesterday.date }
+        if (existingIndex >= 0) {
+            currentList[existingIndex] = yesterday
+        } else {
+            currentList.add(yesterday)
+            currentList.sortByDescending { it.date }
+        }
+        val trimmed = currentList.take(30)
+        _historyList.value = trimmed
+        saveHistoryList(trimmed)
     }
 }
