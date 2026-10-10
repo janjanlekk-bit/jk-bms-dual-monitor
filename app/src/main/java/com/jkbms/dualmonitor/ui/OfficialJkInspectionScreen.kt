@@ -72,7 +72,7 @@ fun OfficialJkInspectionScreen(
                         .clip(RoundedCornerShape(16.dp))
                         .background(if (isB1) Color(0xFF00E676) else Color.Transparent)
                         .clickable { selectedSlot = "B1" }
-                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Text(
                         "B1 (100Ah)",
@@ -88,7 +88,7 @@ fun OfficialJkInspectionScreen(
                         .clip(RoundedCornerShape(16.dp))
                         .background(if (isB2) Color(0xFF00E676) else Color.Transparent)
                         .clickable { selectedSlot = "B2" }
-                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Text(
                         "B2 (90Ah)",
@@ -97,19 +97,6 @@ fun OfficialJkInspectionScreen(
                         color = if (isB2) Color.Black else Color.Gray
                     )
                 }
-            }
-
-            // Read-Only Security Badge
-            Row(
-                modifier = Modifier
-                    .background(Color(0xFF132A1C), RoundedCornerShape(12.dp))
-                    .border(1.dp, Color(0xFF00E676).copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text("🔒", fontSize = 10.sp)
-                Text("READ-ONLY", color = Color(0xFF69F0AE), fontSize = 10.sp, fontWeight = FontWeight.Bold)
             }
         }
 
@@ -140,14 +127,39 @@ fun OfficialJkInspectionScreen(
                     )
                 }
                 val isOnline = currentBms.connectionStatus == ConnectionStatus.CONNECTED
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Box(modifier = Modifier.size(8.dp).background(if (isOnline) Color(0xFF00E676) else Color(0xFFFF5252), CircleShape))
-                    Text(
-                        text = if (isOnline) "ONLINE" else "OFFLINE",
-                        color = if (isOnline) Color(0xFF00E676) else Color(0xFFFF5252),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp
-                    )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Online / Offline Indicator
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Box(modifier = Modifier.size(7.dp).background(if (isOnline) Color(0xFF00E676) else Color(0xFFFF5252), CircleShape))
+                        Text(
+                            text = if (isOnline) "ONLINE" else "OFFLINE",
+                            color = if (isOnline) Color(0xFF00E676) else Color(0xFFFF5252),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp
+                        )
+                    }
+
+                    // Clean, unclipped Read-Only Security Badge
+                    Row(
+                        modifier = Modifier
+                            .background(Color(0xFF132A1C), RoundedCornerShape(8.dp))
+                            .border(1.dp, Color(0xFF00E676).copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("🔒", fontSize = 10.sp)
+                        Text(
+                            text = "READ-ONLY",
+                            color = Color(0xFF69F0AE),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
+                        )
+                    }
                 }
             }
         }

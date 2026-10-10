@@ -17,6 +17,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -102,11 +103,12 @@ fun DashboardScreen(
             onViewHistory = { showHistoryDialog = true }
         )
 
-        val b1Title = if (b1.displayName.isNotBlank()) b1.displayName.replace(" (24S)", "") else "48V 100Ah #1"
-        val b2Title = if (b2.displayName.isNotBlank()) b2.displayName.replace(" (20S)", "") else "48V 100Ah #2"
-
-        BatteryCard(bms = b1, title = b1Title, onViewCells = { onInspectCells(b1) })
-        BatteryCard(bms = b2, title = b2Title, onViewCells = { onInspectCells(b2) })
+        CombinedBatteryPacksCard(
+            b1 = b1,
+            b2 = b2,
+            onInspectB1 = { onInspectCells(b1) },
+            onInspectB2 = { onInspectCells(b2) }
+        )
 
         // ESP32 Wi-Fi Gateway Card & Bluetooth Release Control placed at the VERY BOTTOM
         Card(
@@ -943,7 +945,89 @@ fun formatDisplayDate(dateStr: String): String {
 }
 
 @Composable
-fun BatteryCard(bms: BmsData, title: String, onViewCells: () -> Unit) {
+fun CombinedBatteryPacksCard(
+    b1: BmsData,
+    b2: BmsData,
+    onInspectB1: () -> Unit,
+    onInspectB2: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // Card Title Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "INDIVIDUAL BATTERY PACKS",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                Text(
+                    text = "PARALLEL 16S",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.Gray,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            // Battery 1
+            val b1Title = b1.displayName.ifBlank { "48V 100Ah #1" }.replace(" (24S)", "")
+            BatteryPackRow(
+                bms = b1,
+                title = b1Title,
+                onClick = onInspectB1
+            )
+
+            HorizontalDivider(color = Color(0xFF263238), thickness = 1.dp)
+
+            // Battery 2
+            val b2Title = b2.displayName.ifBlank { "48V 100Ah #2" }.replace(" (20S)", "")
+            BatteryPackRow(
+                bms = b2,
+                title = b2Title,
+                onClick = onInspectB2
+            )
+
+            Spacer(modifier = Modifier.height(2.dp))
+
+            // Single Unified Inspection Button
+            Button(
+                onClick = onInspectB1,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E2838)),
+                border = BorderStroke(1.dp, Color(0xFF00E676).copy(alpha = 0.5f)),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("🔍", fontSize = 13.sp)
+                    Text(
+                        "INSPECT BATTERIES (OFFICIAL JK VIEW)",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun BatteryPackRow(
+    bms: BmsData,
+    title: String,
+    onClick: () -> Unit
+) {
     val absBmsPower = kotlin.math.abs(bms.power)
     val bmsPowerDisplay = if (absBmsPower < 1000f) {
         val formatted = String.format("%.0f W", absBmsPower)
@@ -953,45 +1037,44 @@ fun BatteryCard(bms: BmsData, title: String, onViewCells: () -> Unit) {
         if (bms.power < -0.5f) "-$formatted" else formatted
     }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(12.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = Color.White)
-                Text("${bms.soc}%", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = Color.White)
+            Text("${bms.soc}%", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+        }
 
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Column {
-                    Text(String.format("%.2f V", bms.voltage), fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color.White, fontFamily = FontFamily.Monospace)
-                    Text(String.format("%.1f A  |  %s", bms.current, bmsPowerDisplay), color = Color.Gray, fontSize = 14.sp)
-                }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text("Temp: ${bms.temperature}°C", color = Color.LightGray, fontSize = 13.sp)
-                    Text("Active: ${bms.cells.size}S", color = Color.LightGray, fontSize = 13.sp)
-                    Text("Cell Delta: ${bms.deltaVoltageMv} mV", color = if (bms.deltaVoltageMv > 30) Color(0xFFFF5252) else Color(0xFF69F0AE), fontSize = 13.sp)
-                }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Column {
+                Text(
+                    String.format("%.2f V", bms.voltage),
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(String.format("%.1f A  |  %s", bms.current, bmsPowerDisplay), color = Color.Gray, fontSize = 13.sp)
             }
-
-            HorizontalDivider(color = Color(0xFF2C303A), thickness = 1.dp)
-
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Min: C${bms.minCellNumber} (${String.format("%.3f", bms.minCellVoltage)}V)", color = Color.Gray, fontSize = 12.sp)
-                Text("Max: C${bms.maxCellNumber} (${String.format("%.3f", bms.maxCellVoltage)}V)", color = Color.Gray, fontSize = 12.sp)
+            Column(horizontalAlignment = Alignment.End) {
+                Text("Temp: ${bms.temperature}°C", color = Color.LightGray, fontSize = 12.sp)
+                Text("Active: ${bms.cells.size}S", color = Color.LightGray, fontSize = 12.sp)
+                Text(
+                    "Cell Delta: ${bms.deltaVoltageMv} mV",
+                    color = if (bms.deltaVoltageMv > 30) Color(0xFFFF5252) else Color(0xFF69F0AE),
+                    fontSize = 12.sp
+                )
             }
+        }
 
-            Button(
-                onClick = onViewCells,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF252B36)),
-                border = BorderStroke(1.dp, Color(0xFF00E676).copy(alpha = 0.4f)),
-                shape = RoundedCornerShape(6.dp)
-            ) {
-                Text("INSPECT BATTERY (OFFICIAL JK VIEW)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-            }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Min: C${bms.minCellNumber} (${String.format("%.3f", bms.minCellVoltage)}V)", color = Color.Gray, fontSize = 11.sp)
+            Text("Max: C${bms.maxCellNumber} (${String.format("%.3f", bms.maxCellVoltage)}V)", color = Color.Gray, fontSize = 11.sp)
         }
     }
 }
