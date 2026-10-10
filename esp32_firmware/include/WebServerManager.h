@@ -50,6 +50,25 @@ public:
             server.send(200, "application/json", "{\"status\":\"ok\",\"paused\":false}");
         });
 
+        // Over-The-Air (OTA) firmware update web interface
+        server.on("/update", HTTP_GET, [this]() {
+            String html = F("<!DOCTYPE html><html><head><title>ESP32 Firmware Update</title>"
+                          "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+                          "<style>body{background:#12151C;color:#ECEFF1;font-family:sans-serif;padding:24px;text-align:center}"
+                          ".card{background:#1A1F29;border:1px solid #262C3A;border-radius:12px;padding:24px;max-width:420px;margin:40px auto}"
+                          "input[type=file]{margin:20px 0;background:#262C3A;padding:12px;border-radius:8px;color:#ECEFF1;width:80%}"
+                          "button{background:#00E676;color:#12151C;border:none;padding:12px 24px;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;width:85%}"
+                          "a{color:#90CAF9;text-decoration:none;font-size:13px}"
+                          "</style></head><body><div class='card'>"
+                          "<h2>⚡ ESP32 Firmware Update</h2>"
+                          "<p style='color:#90A4AE;font-size:13px'>Select firmware.bin to flash Over-The-Air</p>"
+                          "<form method='POST' action='/update' enctype='multipart/form-data'>"
+                          "<input type='file' name='file' accept='.bin' required><br>"
+                          "<button type='submit'>UPLOAD & FLASH</button>"
+                          "</form><br><br><a href='/'>← Back to Dashboard</a></div></body></html>");
+            server.send(200, "text/html", html);
+        });
+
         // Over-The-Air (OTA) firmware update endpoint
         server.on("/update", HTTP_POST, 
             [this]() {
@@ -342,6 +361,10 @@ h1{font-size:18px;text-align:center;margin-bottom:12px;letter-spacing:1px;color:
       RESUME ESP32 NOW
     </button>
   </div>
+</div>
+
+<div style="text-align:center;margin:16px 0">
+  <a href="/update" style="color:#90CAF9;font-size:12px;text-decoration:none;font-weight:600">⚡ Over-The-Air (OTA) Firmware Update</a>
 </div>
 
 <script>
