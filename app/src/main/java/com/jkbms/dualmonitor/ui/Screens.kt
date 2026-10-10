@@ -84,7 +84,9 @@ fun DashboardScreen(
 
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF141C26)),
+            border = BorderStroke(1.dp, Color(0xFF263238)),
+            shape = RoundedCornerShape(12.dp)
         ) {
             Row(
                 modifier = Modifier.padding(12.dp).fillMaxWidth(),
@@ -223,6 +225,41 @@ fun StatusBadge(label: String, status: ConnectionStatus) {
 
 @Composable
 fun TotalBankCard(bank: TotalBankData) {
+    val isCharging = bank.power > 0.5f || bank.current > 0.05f
+    val isDischarging = bank.power < -0.5f || bank.current < -0.05f
+    val absPower = kotlin.math.abs(bank.power)
+
+    val totalPowerDisplay = when {
+        absPower < 0.5f -> "0 W"
+        absPower < 1000f -> {
+            val formatted = String.format(Locale.US, "%.0f W", absPower)
+            if (isCharging) "+$formatted" else if (isDischarging) "-$formatted" else formatted
+        }
+        else -> {
+            val formatted = String.format(Locale.US, "%.2f kW", absPower / 1000f)
+            if (isCharging) "+$formatted" else if (isDischarging) "-$formatted" else formatted
+        }
+    }
+
+    val powerColor = when {
+        isCharging -> Color(0xFF00E676)   // Green (Solar charging)
+        isDischarging -> Color(0xFFFF9100) // Orange (Load discharging)
+        else -> Color.White
+    }
+
+    val currentColor = when {
+        isCharging -> Color(0xFF00E676)
+        isDischarging -> Color(0xFFFF9100)
+        else -> Color.White
+    }
+
+    val totalCurrentDisplay = when {
+        kotlin.math.abs(bank.current) < 0.05f -> "0.0 A"
+        isCharging -> String.format(Locale.US, "+%.1f A", kotlin.math.abs(bank.current))
+        isDischarging -> String.format(Locale.US, "-%.1f A", kotlin.math.abs(bank.current))
+        else -> String.format(Locale.US, "%.1f A", bank.current)
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF14243B)),
@@ -235,36 +272,30 @@ fun TotalBankCard(bank: TotalBankData) {
             Row(modifier = Modifier.fillMaxWidth()) {
                 MetricItem(
                     label = "BUS VOLTAGE",
-                    value = String.format("%.2f V", bank.voltage),
+                    value = String.format(Locale.US, "%.2f V", bank.voltage),
                     modifier = Modifier.weight(1f),
                     horizontalAlignment = Alignment.Start
                 )
                 MetricItem(
                     label = "TOTAL CURRENT",
-                    value = String.format("%.1f A", bank.current),
+                    value = totalCurrentDisplay,
+                    valueColor = currentColor,
                     modifier = Modifier.weight(1f),
                     horizontalAlignment = Alignment.End
                 )
             }
             Spacer(modifier = Modifier.height(10.dp))
-            val absPower = kotlin.math.abs(bank.power)
-            val totalPowerDisplay = if (absPower < 1000f) {
-                val formatted = String.format("%.0f W", absPower)
-                if (bank.power < -0.5f) "-$formatted" else formatted
-            } else {
-                val formatted = String.format("%.2f kW", absPower / 1000f)
-                if (bank.power < -0.5f) "-$formatted" else formatted
-            }
             Row(modifier = Modifier.fillMaxWidth()) {
                 MetricItem(
                     label = "TOTAL POWER",
                     value = totalPowerDisplay,
+                    valueColor = powerColor,
                     modifier = Modifier.weight(1f),
                     horizontalAlignment = Alignment.Start
                 )
                 MetricItem(
                     label = "REMAINING CAPACITY",
-                    value = String.format("%.1f Ah", bank.remainingCapacityAh),
+                    value = String.format(Locale.US, "%.1f Ah", bank.remainingCapacityAh),
                     modifier = Modifier.weight(1f),
                     horizontalAlignment = Alignment.End
                 )
@@ -280,7 +311,7 @@ fun TotalBankCard(bank: TotalBankData) {
                 val totalEnergyKwh = (bank.voltage * bank.remainingCapacityAh) / 1000f
                 MetricItem(
                     label = "STORED ENERGY",
-                    value = String.format("%.2f kWh", totalEnergyKwh),
+                    value = String.format(Locale.US, "%.2f kWh", totalEnergyKwh),
                     modifier = Modifier.weight(1f),
                     horizontalAlignment = Alignment.End
                 )
@@ -958,7 +989,8 @@ fun CombinedBatteryPacksCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF14202E)),
+        border = BorderStroke(1.dp, Color(0xFF1E88E5).copy(alpha = 0.5f)),
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -972,7 +1004,7 @@ fun CombinedBatteryPacksCard(
                     text = "INDIVIDUAL BATTERY PACKS",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = Color(0xFF90CAF9)
                 )
                 Text(
                     text = "PARALLEL 16S",
@@ -989,8 +1021,6 @@ fun CombinedBatteryPacksCard(
                 title = b1Title,
                 onClick = onInspectB1
             )
-
-            HorizontalDivider(color = Color(0xFF263238), thickness = 1.dp)
 
             // Battery 2
             val b2Title = b2.displayName.ifBlank { "48V 100Ah #2" }.replace(" (20S)", "")
@@ -1034,52 +1064,95 @@ fun BatteryPackRow(
     onClick: () -> Unit
 ) {
     val absBmsPower = kotlin.math.abs(bms.power)
+    val isCharging = bms.power > 0.5f || bms.current > 0.05f
+    val isDischarging = bms.power < -0.5f || bms.current < -0.05f
+
     val bmsPowerDisplay = if (absBmsPower < 1000f) {
-        val formatted = String.format("%.0f W", absBmsPower)
-        if (bms.power < -0.5f) "-$formatted" else formatted
+        val formatted = String.format(Locale.US, "%.0f W", absBmsPower)
+        if (isCharging) "+$formatted" else if (isDischarging) "-$formatted" else formatted
     } else {
-        val formatted = String.format("%.2f kW", absBmsPower / 1000f)
-        if (bms.power < -0.5f) "-$formatted" else formatted
+        val formatted = String.format(Locale.US, "%.2f kW", absBmsPower / 1000f)
+        if (isCharging) "+$formatted" else if (isDischarging) "-$formatted" else formatted
     }
 
-    Column(
+    val powerColor = when {
+        isCharging -> Color(0xFF00E676)
+        isDischarging -> Color(0xFFFF9100)
+        else -> Color.Gray
+    }
+
+    val currentDisplay = when {
+        kotlin.math.abs(bms.current) < 0.05f -> "0.0 A"
+        isCharging -> String.format(Locale.US, "+%.1f A", kotlin.math.abs(bms.current))
+        isDischarging -> String.format(Locale.US, "-%.1f A", kotlin.math.abs(bms.current))
+        else -> String.format(Locale.US, "%.1f A", bms.current)
+    }
+
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-            .padding(vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF0E1622)),
+        border = BorderStroke(1.dp, Color(0xFF1C2B3C)),
+        shape = RoundedCornerShape(10.dp)
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = Color.White)
-            Text("${bms.soc}%", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-        }
-
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Column {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = Color.White)
                 Text(
-                    String.format("%.2f V", bms.voltage),
-                    fontSize = 26.sp,
+                    "${bms.soc}%",
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.primary,
                     fontFamily = FontFamily.Monospace
                 )
-                Text(String.format("%.1f A  |  %s", bms.current, bmsPowerDisplay), color = Color.Gray, fontSize = 13.sp)
             }
-            Column(horizontalAlignment = Alignment.End) {
-                Text("Temp: ${bms.temperature}°C", color = Color.LightGray, fontSize = 12.sp)
-                Text("Active: ${bms.cells.size}S", color = Color.LightGray, fontSize = 12.sp)
-                Text(
-                    "Cell Delta: ${bms.deltaVoltageMv} mV",
-                    color = if (bms.deltaVoltageMv > 30) Color(0xFFFF5252) else Color(0xFF69F0AE),
-                    fontSize = 12.sp
-                )
-            }
-        }
 
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Min: C${bms.minCellNumber} (${String.format("%.3f", bms.minCellVoltage)}V)", color = Color.Gray, fontSize = 11.sp)
-            Text("Max: C${bms.maxCellNumber} (${String.format("%.3f", bms.maxCellVoltage)}V)", color = Color.Gray, fontSize = 11.sp)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column {
+                    Text(
+                        String.format(Locale.US, "%.2f V", bms.voltage),
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            currentDisplay,
+                            color = Color.Gray,
+                            fontSize = 13.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Text("•", color = Color.DarkGray, fontSize = 10.sp)
+                        Text(
+                            bmsPowerDisplay,
+                            color = powerColor,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("Temp: ${bms.temperature}°C", color = Color.LightGray, fontSize = 12.sp)
+                    Text("Active: ${bms.cells.size}S", color = Color.LightGray, fontSize = 12.sp)
+                    Text(
+                        "Cell Delta: ${bms.deltaVoltageMv} mV",
+                        color = if (bms.deltaVoltageMv > 30) Color(0xFFFF5252) else Color(0xFF69F0AE),
+                        fontSize = 12.sp
+                    )
+                }
+            }
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Min: C${bms.minCellNumber} (${String.format(Locale.US, "%.3f", bms.minCellVoltage)}V)", color = Color.Gray, fontSize = 11.sp)
+                Text("Max: C${bms.maxCellNumber} (${String.format(Locale.US, "%.3f", bms.maxCellVoltage)}V)", color = Color.Gray, fontSize = 11.sp)
+            }
         }
     }
 }
@@ -1089,6 +1162,7 @@ fun MetricItem(
     label: String,
     value: String,
     modifier: Modifier = Modifier,
+    valueColor: Color = Color.White,
     horizontalAlignment: Alignment.Horizontal = Alignment.Start
 ) {
     Column(modifier = modifier, horizontalAlignment = horizontalAlignment) {
@@ -1102,7 +1176,7 @@ fun MetricItem(
             text = value,
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
-            color = Color.White,
+            color = valueColor,
             fontFamily = FontFamily.Monospace,
             textAlign = if (horizontalAlignment == Alignment.End) TextAlign.End else TextAlign.Start
         )
