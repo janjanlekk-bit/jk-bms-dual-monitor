@@ -2,6 +2,7 @@
 #include <Arduino.h>
 #include <WebServer.h>
 #include <ArduinoJson.h>
+#include <Update.h>
 #include "BleManager.h"
 #include "EnergyTracker.h"
 
@@ -48,6 +49,35 @@ public:
             ble->resumeBle();
             server.send(200, "application/json", "{\"status\":\"ok\",\"paused\":false}");
         });
+
+        // Over-The-Air (OTA) firmware update endpoint
+        server.on("/update", HTTP_POST, 
+            [this]() {
+                server.sendHeader("Connection", "close");
+                server.send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
+                delay(300);
+                ESP.restart();
+            },
+            [this]() {
+                HTTPUpload& upload = server.upload();
+                if (upload.status == UPLOAD_FILE_START) {
+                    Serial.printf("[OTA] Firmware update started: %s\n", upload.filename.c_str());
+                    if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+                        Update.printError(Serial);
+                    }
+                } else if (upload.status == UPLOAD_FILE_WRITE) {
+                    if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+                        Update.printError(Serial);
+                    }
+                } else if (upload.status == UPLOAD_FILE_END) {
+                    if (Update.end(true)) {
+                        Serial.printf("[OTA] Update Success: %u bytes! Rebooting...\n", upload.totalSize);
+                    } else {
+                        Update.printError(Serial);
+                    }
+                }
+            }
+        );
 
         server.begin();
         Serial.println("[HTTP] Web server started on port 80");
@@ -157,6 +187,10 @@ private:
         JsonObject bleObj = doc["ble"].to<JsonObject>();
         bleObj["paused"] = ble->isBlePaused();
         bleObj["remainingSec"] = ble->getBlePauseRemainingSec();
+        bleObj["b1AddrType"] = ble->addr1.getType() == BLE_ADDR_RANDOM ? "RANDOM" : "PUBLIC";
+        bleObj["b2AddrType"] = ble->addr2.getType() == BLE_ADDR_RANDOM ? "RANDOM" : "PUBLIC";
+        bleObj["b2Attempts"] = ble->b2TotalAttempts;
+        bleObj["b2LastStatus"] = ble->b2LastStatus;
 
         String json;
         serializeJson(doc, json);

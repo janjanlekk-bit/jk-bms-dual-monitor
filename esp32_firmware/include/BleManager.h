@@ -40,10 +40,16 @@ public:
     String mac1 = DEFAULT_B1_MAC;
     String mac2 = DEFAULT_B2_MAC;
 
-    NimBLEAddress addr1 = NimBLEAddress("");
-    NimBLEAddress addr2 = NimBLEAddress("");
-    volatile bool hasAddr1 = false;
+    NimBLEAddress addr1 = NimBLEAddress(DEFAULT_B1_MAC, BLE_ADDR_PUBLIC);
+    NimBLEAddress addr2 = NimBLEAddress(DEFAULT_B2_MAC, BLE_ADDR_RANDOM);
+    volatile bool hasAddr1 = true;
     volatile bool hasAddr2 = false;
+
+    uint8_t b1FailCount = 0;
+    uint8_t b2FailCount = 0;
+    uint32_t b1TotalAttempts = 0;
+    uint32_t b2TotalAttempts = 0;
+    String b2LastStatus = "Init";
 
     unsigned long lastWatchdogMs = 0;
     unsigned long lastScanMs = 0;
@@ -64,10 +70,10 @@ public:
         bms2.macAddress = mac2;
         bms2.nominalCapacityAh = B2_NOMINAL_AH;
 
-        addr1 = NimBLEAddress(mac1.c_str());
-        addr2 = NimBLEAddress(mac2.c_str());
+        addr1 = NimBLEAddress(mac1.c_str(), BLE_ADDR_PUBLIC);
+        addr2 = NimBLEAddress(mac2.c_str(), BLE_ADDR_RANDOM); // Start B2 with RANDOM (type 1)
         hasAddr1 = true;
-        hasAddr2 = true;
+        hasAddr2 = false;
 
         NimBLEDevice::init("ESP32_JK_MONITOR");
         NimBLEDevice::setPower(ESP_PWR_LVL_P9); // Maximum BLE TX power (+9dBm)
@@ -82,12 +88,31 @@ public:
         client1->setClientCallbacks(cb1, false);
         client2->setClientCallbacks(cb2, false);
 
-        client1->setConnectTimeout(6);
-        client2->setConnectTimeout(6);
+        client1->setConnectTimeout(4);
+        client2->setConnectTimeout(4);
+
+        // Quick 4-second initial discovery scan at boot
+        NimBLEScan* pScan = NimBLEDevice::getScan();
+        pScan->setAdvertisedDeviceCallbacks(this, false);
+        pScan->setActiveScan(true);
+        pScan->setInterval(120);
+        pScan->setWindow(60);
+        pScan->start(4, false);
     }
 
     void onResult(NimBLEAdvertisedDevice* dev) override {
-        // Direct MAC addressing used; scanning not required
+        String addrStr = dev->getAddress().toString().c_str();
+        if (addrStr.equalsIgnoreCase(mac1)) {
+            addr1 = dev->getAddress();
+            hasAddr1 = true;
+            Serial.printf("[BLE] Discovered B1: %s (type %u, RSSI %d)\n",
+                          addrStr.c_str(), dev->getAddress().getType(), dev->getRSSI());
+        } else if (addrStr.equalsIgnoreCase(mac2)) {
+            addr2 = dev->getAddress();
+            hasAddr2 = true;
+            Serial.printf("[BLE] Discovered B2: %s (type %u, RSSI %d)\n",
+                          addrStr.c_str(), dev->getAddress().getType(), dev->getRSSI());
+        }
     }
 
     void onDeviceDisconnect(int devIdx) {
@@ -149,17 +174,17 @@ public:
         bool b1NeedsConn = !client1->isConnected();
         bool b2NeedsConn = !client2->isConnected();
 
-        // 1. Connect to B1 if disconnected (direct MAC, retry every 6s)
-        if (b1NeedsConn && (now - lastB1ConnectAttempt > 6000)) {
-            lastB1ConnectAttempt = now;
+        // 1. Connect to B1 if disconnected (retry every 7s, recording attempt AFTER finish)
+        if (b1NeedsConn && (now - lastB1ConnectAttempt > 7000)) {
             connectToDevice(1, addr1);
+            lastB1ConnectAttempt = millis();
             return;
         }
 
-        // 2. Connect to B2 if disconnected (direct MAC, retry every 6s, staggered)
-        if (b2NeedsConn && (now - lastB2ConnectAttempt > 6000)) {
-            lastB2ConnectAttempt = now;
+        // 2. Connect to B2 if disconnected (retry every 7s, recording attempt AFTER finish)
+        if (b2NeedsConn && (now - lastB2ConnectAttempt > 7000)) {
             connectToDevice(2, addr2);
+            lastB2ConnectAttempt = millis();
             return;
         }
 
@@ -176,10 +201,19 @@ public:
         NimBLEClient* client = (devIndex == 1) ? client1 : client2;
         String name = (devIndex == 1) ? "B1" : "B2";
 
-        Serial.printf("[BLE] Connecting to %s (%s)...\n", name.c_str(), targetAddr.toString().c_str());
+        if (devIndex == 1) b1TotalAttempts++; else b2TotalAttempts++;
+
+        Serial.printf("[BLE] Connecting to %s (%s, type %s)...\n",
+                      name.c_str(), targetAddr.toString().c_str(),
+                      targetAddr.getType() == BLE_ADDR_RANDOM ? "RANDOM" : "PUBLIC");
 
         if (client->connect(targetAddr, false)) {
             Serial.printf("[BLE] Connected to %s!\n", name.c_str());
+            if (devIndex == 2) {
+                b2FailCount = 0;
+                b2LastStatus = "Connected";
+                hasAddr2 = true;
+            }
             client->setConnectionParams(24, 40, 0, 400);
 
             NimBLERemoteService* pSvc = client->getService(JK_SERVICE_UUID);
@@ -215,6 +249,15 @@ public:
             }
         } else {
             Serial.printf("[BLE] Connection to %s failed\n", name.c_str());
+            if (devIndex == 2) {
+                b2FailCount++;
+                // Toggle between RANDOM and PUBLIC every failed attempt
+                uint8_t curType = addr2.getType();
+                uint8_t nextType = (curType == BLE_ADDR_PUBLIC) ? BLE_ADDR_RANDOM : BLE_ADDR_PUBLIC;
+                addr2 = NimBLEAddress(mac2.c_str(), nextType);
+                b2LastStatus = String("Failed (toggled to ") + (nextType == BLE_ADDR_RANDOM ? "RANDOM)" : "PUBLIC)");
+                Serial.printf("[BLE] Switched B2 target address type to %s\n", nextType == BLE_ADDR_RANDOM ? "RANDOM" : "PUBLIC");
+            }
         }
 
         isConnecting = false;
