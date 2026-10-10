@@ -56,13 +56,18 @@ public:
     void begin() {
         dataMutex = xSemaphoreCreateMutex();
 
-        bms1.name = "48V 100Ah #1 (24S)";
+        bms1.name = "48V 100Ah #1";
         bms1.macAddress = mac1;
         bms1.nominalCapacityAh = B1_NOMINAL_AH;
 
-        bms2.name = "48V 100Ah #2 (20S)";
+        bms2.name = "48V 100Ah #2";
         bms2.macAddress = mac2;
         bms2.nominalCapacityAh = B2_NOMINAL_AH;
+
+        addr1 = NimBLEAddress(mac1.c_str());
+        addr2 = NimBLEAddress(mac2.c_str());
+        hasAddr1 = true;
+        hasAddr2 = true;
 
         NimBLEDevice::init("ESP32_JK_MONITOR");
         NimBLEDevice::setPower(ESP_PWR_LVL_P9); // Maximum BLE TX power (+9dBm)
@@ -79,38 +84,21 @@ public:
 
         client1->setConnectTimeout(6);
         client2->setConnectTimeout(6);
-
-        NimBLEScan* pScan = NimBLEDevice::getScan();
-        pScan->setAdvertisedDeviceCallbacks(this);
-        pScan->setActiveScan(true);
-        pScan->setInterval(120);
-        pScan->setWindow(60);
     }
 
     void onResult(NimBLEAdvertisedDevice* dev) override {
-        String addrStr = dev->getAddress().toString().c_str();
-        addrStr.toLowerCase();
-
-        if (addrStr.equalsIgnoreCase(mac1) && !client1->isConnected()) {
-            addr1 = dev->getAddress();
-            hasAddr1 = true;
-        } else if (addrStr.equalsIgnoreCase(mac2) && !client2->isConnected()) {
-            addr2 = dev->getAddress();
-            hasAddr2 = true;
-        }
+        // Direct MAC addressing used; scanning not required
     }
 
     void onDeviceDisconnect(int devIdx) {
         if (devIdx == 1) {
             bms1.isConnected = false;
             chr1 = nullptr;
-            hasAddr1 = false;
             assembler1.reset();
             Serial.println("[BLE] B1 disconnected");
         } else {
             bms2.isConnected = false;
             chr2 = nullptr;
-            hasAddr2 = false;
             assembler2.reset();
             Serial.println("[BLE] B2 disconnected");
         }
@@ -139,7 +127,6 @@ public:
     }
 
     void disconnectAll() {
-        NimBLEDevice::getScan()->stop();
         if (client1 && client1->isConnected()) {
             client1->disconnect();
         }
@@ -148,8 +135,6 @@ public:
         }
         bms1.isConnected = false;
         bms2.isConnected = false;
-        hasAddr1 = false;
-        hasAddr2 = false;
     }
 
     void update() {
@@ -164,31 +149,22 @@ public:
         bool b1NeedsConn = !client1->isConnected();
         bool b2NeedsConn = !client2->isConnected();
 
-        // 1. Scan for devices if any is disconnected and we don't have its address
-        if ((b1NeedsConn && !hasAddr1) || (b2NeedsConn && !hasAddr2)) {
-            if (!NimBLEDevice::getScan()->isScanning() && (now - lastScanMs > 5000)) {
-                lastScanMs = now;
-                NimBLEDevice::getScan()->start(2, false);
-                return;
-            }
-        }
-
-        // 2. Connect to B1 if ready
-        if (b1NeedsConn && hasAddr1 && !NimBLEDevice::getScan()->isScanning() && (now - lastB1ConnectAttempt > 8000)) {
+        // 1. Connect to B1 if disconnected (direct MAC, retry every 6s)
+        if (b1NeedsConn && (now - lastB1ConnectAttempt > 6000)) {
             lastB1ConnectAttempt = now;
             connectToDevice(1, addr1);
             return;
         }
 
-        // 3. Connect to B2 if ready (staggered)
-        if (b2NeedsConn && hasAddr2 && !NimBLEDevice::getScan()->isScanning() && (now - lastB2ConnectAttempt > 8000)) {
+        // 2. Connect to B2 if disconnected (direct MAC, retry every 6s, staggered)
+        if (b2NeedsConn && (now - lastB2ConnectAttempt > 6000)) {
             lastB2ConnectAttempt = now;
             connectToDevice(2, addr2);
             return;
         }
 
-        // 4. Quiet stream watchdog: ONLY request update if silent for > 15 seconds
-        if (now - lastWatchdogMs >= 5000) {
+        // 3. Keepalive and stream watchdog: check every 2.5 seconds
+        if (now - lastWatchdogMs >= 2500) {
             lastWatchdogMs = now;
             checkSilentStreams(now);
         }
@@ -196,7 +172,6 @@ public:
 
     void connectToDevice(int devIndex, NimBLEAddress targetAddr) {
         isConnecting = true;
-        NimBLEDevice::getScan()->stop();
 
         NimBLEClient* client = (devIndex == 1) ? client1 : client2;
         String name = (devIndex == 1) ? "B1" : "B2";
@@ -217,12 +192,14 @@ public:
                             this->handleNotify(1, data, len);
                         });
                         bms1.isConnected = true;
+                        bms1.lastSeenMs = millis();
                     } else {
                         chr2 = pChr;
                         pChr->subscribe(true, [this](NimBLERemoteCharacteristic*, uint8_t* data, size_t len, bool) {
                             this->handleNotify(2, data, len);
                         });
                         bms2.isConnected = true;
+                        bms2.lastSeenMs = millis();
                     }
                     Serial.printf("[BLE] Subscribed to %s notifications!\n", name.c_str());
 
@@ -248,14 +225,26 @@ public:
         JkProtocol::buildReadCommand(reqCmd, 0x96);
 
         if (client1->isConnected() && chr1 != nullptr) {
-            if (bms1.lastSeenMs > 0 && (now - bms1.lastSeenMs > 15000)) {
+            // Keepalive ping if silent for > 5s
+            if (bms1.lastSeenMs > 0 && (now - bms1.lastSeenMs > 5000)) {
                 chr1->writeValue(reqCmd, 20, chr1->canWrite());
+            }
+            // Watchdog stall recovery: if silent for > 20s, force disconnect & reconnect
+            if (bms1.lastSeenMs > 0 && (now - bms1.lastSeenMs > 20000)) {
+                Serial.println("[BLE] B1 stream dead > 20s, restarting connection...");
+                client1->disconnect();
             }
         }
 
         if (client2->isConnected() && chr2 != nullptr) {
-            if (bms2.lastSeenMs > 0 && (now - bms2.lastSeenMs > 15000)) {
+            // Keepalive ping if silent for > 5s
+            if (bms2.lastSeenMs > 0 && (now - bms2.lastSeenMs > 5000)) {
                 chr2->writeValue(reqCmd, 20, chr2->canWrite());
+            }
+            // Watchdog stall recovery: if silent for > 20s, force disconnect & reconnect
+            if (bms2.lastSeenMs > 0 && (now - bms2.lastSeenMs > 20000)) {
+                Serial.println("[BLE] B2 stream dead > 20s, restarting connection...");
+                client2->disconnect();
             }
         }
     }
@@ -291,8 +280,9 @@ public:
         int s1 = 0, s2 = 0;
 
         if (xSemaphoreTake(dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            b1Active = bms1.isConnected && bms1.voltage > 10.0f;
-            b2Active = bms2.isConnected && bms2.voltage > 10.0f;
+            unsigned long now = millis();
+            b1Active = bms1.isConnected && (bms1.lastSeenMs > 0) && (now - bms1.lastSeenMs < 25000) && bms1.voltage > 10.0f;
+            b2Active = bms2.isConnected && (bms2.lastSeenMs > 0) && (now - bms2.lastSeenMs < 25000) && bms2.voltage > 10.0f;
 
             v1 = b1Active ? bms1.voltage : 0.0f;
             v2 = b2Active ? bms2.voltage : 0.0f;

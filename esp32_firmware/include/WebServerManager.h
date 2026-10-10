@@ -58,8 +58,10 @@ public:
     }
 
 private:
-    void copySnap(const BmsData& src, BmsSnap& dst) {
-        dst.connected = src.isConnected;
+    void copySnap(const BmsData& src, BmsSnap& dst, bool isClientConnected) {
+        unsigned long now = millis();
+        // Online if client is actively connected AND packets arrived in the last 20 seconds
+        dst.connected = src.isConnected && isClientConnected && (src.lastSeenMs > 0) && (now - src.lastSeenMs < 20000);
         dst.voltage = src.voltage;
         dst.current = src.current;
         dst.power = src.power;
@@ -105,14 +107,16 @@ private:
         // Take lightweight snapshots under mutex
         BmsSnap s1, s2;
         if (xSemaphoreTake(ble->dataMutex, pdMS_TO_TICKS(50)) == pdTRUE) {
-            copySnap(ble->bms1, s1);
-            copySnap(ble->bms2, s2);
+            bool c1 = ble->client1 != nullptr && ble->client1->isConnected();
+            bool c2 = ble->client2 != nullptr && ble->client2->isConnected();
+            copySnap(ble->bms1, s1, c1);
+            copySnap(ble->bms2, s2, c2);
             xSemaphoreGive(ble->dataMutex);
         }
 
         // B1
         JsonObject b1 = doc["b1"].to<JsonObject>();
-        b1["name"] = "48V 100Ah #1 (24S)";
+        b1["name"] = "48V 100Ah #1";
         b1["connected"] = s1.connected;
         b1["voltage"] = s1.voltage;
         b1["current"] = s1.current;
@@ -132,7 +136,7 @@ private:
 
         // B2
         JsonObject b2 = doc["b2"].to<JsonObject>();
-        b2["name"] = "48V 100Ah #2 (20S)";
+        b2["name"] = "48V 100Ah #2";
         b2["connected"] = s2.connected;
         b2["voltage"] = s2.voltage;
         b2["current"] = s2.current;

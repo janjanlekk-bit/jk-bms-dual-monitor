@@ -80,8 +80,8 @@ fun DashboardScreen(
                 modifier = Modifier.padding(12.dp).fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceAround
             ) {
-                StatusBadge(label = "B1 (24S)", status = b1.connectionStatus)
-                StatusBadge(label = "B2 (20S)", status = b2.connectionStatus)
+                StatusBadge(label = "BATTERY 1", status = b1.connectionStatus)
+                StatusBadge(label = "BATTERY 2", status = b2.connectionStatus)
             }
         }
 
@@ -94,8 +94,8 @@ fun DashboardScreen(
             onViewHistory = { showHistoryDialog = true }
         )
 
-        val b1Title = if (b1.displayName.isNotBlank()) b1.displayName else "BATTERY 1 (24S)"
-        val b2Title = if (b2.displayName.isNotBlank()) b2.displayName else "BATTERY 2 (20S)"
+        val b1Title = if (b1.displayName.isNotBlank()) b1.displayName.replace(" (24S)", "") else "48V 100Ah #1"
+        val b2Title = if (b2.displayName.isNotBlank()) b2.displayName.replace(" (20S)", "") else "48V 100Ah #2"
 
         BatteryCard(bms = b1, title = b1Title, onViewCells = { onInspectCells(b1) })
         BatteryCard(bms = b2, title = b2Title, onViewCells = { onInspectCells(b2) })

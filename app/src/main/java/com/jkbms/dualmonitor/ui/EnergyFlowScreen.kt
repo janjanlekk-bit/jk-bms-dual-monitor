@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jkbms.dualmonitor.ble.BmsConnectionManager
@@ -38,6 +39,7 @@ import com.jkbms.dualmonitor.model.TotalBankData
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 @Composable
@@ -620,18 +622,35 @@ fun ParallelPacksCard(
             Spacer(modifier = Modifier.height(12.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                val totalAbsCurrent = abs(b1.current) + abs(b2.current)
+                val b1Share = if (totalAbsCurrent > 0.1f) {
+                    ((abs(b1.current) / totalAbsCurrent) * 100f).roundToInt()
+                } else {
+                    50
+                }
+                val b2Share = if (totalAbsCurrent > 0.1f) {
+                    ((abs(b2.current) / totalAbsCurrent) * 100f).roundToInt()
+                } else {
+                    50
+                }
+
+                val b1Name = if (b1.displayName.isNotBlank()) b1.displayName.replace(" (24S)", "") else "48V 100Ah #1"
+                val b2Name = if (b2.displayName.isNotBlank()) b2.displayName.replace(" (20S)", "") else "48V 100Ah #2"
+
                 PackMiniSummary(
                     modifier = Modifier.weight(1f),
-                    title = if (b1.displayName.isNotBlank()) b1.displayName else "Pack 1 (B1)",
+                    title = b1Name,
                     bms = b1,
+                    sharePercent = b1Share,
                     onInspect = onInspectB1
                 )
                 PackMiniSummary(
                     modifier = Modifier.weight(1f),
-                    title = if (b2.displayName.isNotBlank()) b2.displayName else "Pack 2 (B2)",
+                    title = b2Name,
                     bms = b2,
+                    sharePercent = b2Share,
                     onInspect = onInspectB2
                 )
             }
@@ -644,6 +663,7 @@ fun PackMiniSummary(
     modifier: Modifier = Modifier,
     title: String,
     bms: BmsData,
+    sharePercent: Int,
     onInspect: () -> Unit
 ) {
     Card(
@@ -662,32 +682,59 @@ fun PackMiniSummary(
                     text = title,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
                 )
-                Text(
-                    text = "${bms.soc}%",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF00E676)
-                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Surface(
+                    color = Color(0xFF1B2838),
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Text(
+                        text = "$sharePercent% share",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF00E676),
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                }
             }
             Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = String.format(Locale.US, "%.2f V • %.1f A", bms.voltage, bms.current),
-                style = MaterialTheme.typography.labelSmall,
-                color = Color(0xFFCFD8DC)
-            )
-            Text(
-                text = String.format(Locale.US, "Power: %.0f W", bms.power),
-                style = MaterialTheme.typography.labelSmall,
-                color = Color(0xFF90A4AE)
-            )
-            Text(
-                text = "Delta: ${bms.deltaVoltageMv} mV",
-                style = MaterialTheme.typography.labelSmall,
-                fontSize = 10.sp,
-                color = if (bms.deltaVoltageMv > 50) Color(0xFFFF5252) else Color(0xFF00E676)
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "SOC: ${bms.soc}%",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFF81C784),
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = String.format(Locale.US, "%.0f W", bms.power),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFF90A4AE)
+                )
+            }
+            Spacer(modifier = Modifier.height(2.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = String.format(Locale.US, "%.2f V • %.1f A", bms.voltage, bms.current),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFFCFD8DC)
+                )
+                Text(
+                    text = "Δ ${bms.deltaVoltageMv} mV",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = 10.sp,
+                    color = if (bms.deltaVoltageMv > 50) Color(0xFFFF5252) else Color(0xFF00E676)
+                )
+            }
         }
     }
 }

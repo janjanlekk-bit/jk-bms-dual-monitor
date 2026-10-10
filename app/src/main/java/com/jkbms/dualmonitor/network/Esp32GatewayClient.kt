@@ -108,7 +108,7 @@ class Esp32GatewayClient(
         // 2. Battery 1
         val b1Obj = root.optJSONObject("b1")
         val b1Data = if (b1Obj != null) {
-            parseBms(id = "B1", defaultName = "48V 100Ah #1 (24S)", mac = "C8:47:80:1B:76:00", obj = b1Obj)
+            parseBms(id = "B1", defaultName = "48V 100Ah #1", mac = "C8:47:80:1B:76:00", obj = b1Obj)
         } else {
             BmsData(id = "B1", displayName = "48V 100Ah #1")
         }
@@ -116,7 +116,7 @@ class Esp32GatewayClient(
         // 3. Battery 2
         val b2Obj = root.optJSONObject("b2")
         val b2Data = if (b2Obj != null) {
-            parseBms(id = "B2", defaultName = "48V 100Ah #2 (20S)", mac = "C8:47:80:1C:14:68", obj = b2Obj)
+            parseBms(id = "B2", defaultName = "48V 100Ah #2", mac = "C8:47:80:1C:14:68", obj = b2Obj)
         } else {
             BmsData(id = "B2", displayName = "48V 100Ah #2")
         }
@@ -144,7 +144,8 @@ class Esp32GatewayClient(
         val nomAh = obj.optDouble("nominalAh", 100.0).toFloat()
         val deltaMv = obj.optInt("deltaMv", 0)
         val cycles = obj.optInt("cycles", 0)
-        val name = obj.optString("name", defaultName)
+        val rawName = obj.optString("name", defaultName)
+        val name = rawName.replace(" (24S)", "").replace(" (20S)", "").ifBlank { defaultName }
 
         val cellsArray = obj.optJSONArray("cells")
         val cellsList = mutableListOf<CellData>()
