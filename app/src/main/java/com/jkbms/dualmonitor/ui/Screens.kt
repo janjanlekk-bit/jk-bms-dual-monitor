@@ -987,9 +987,10 @@ fun BatteryCard(bms: BmsData, title: String, onViewCells: () -> Unit) {
                 onClick = onViewCells,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF252B36)),
+                border = BorderStroke(1.dp, Color(0xFF00E676).copy(alpha = 0.4f)),
                 shape = RoundedCornerShape(6.dp)
             ) {
-                Text("VIEW CELLS (${bms.cells.size} ACTIVE)", color = Color.White)
+                Text("INSPECT BATTERY (OFFICIAL JK VIEW)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
             }
         }
     }

@@ -39,34 +39,39 @@ class MainActivity : ComponentActivity() {
                 primary = Color(0xFF00E676),
                 secondary = Color(0xFF2979FF)
             )) {
-                var selectedBmsForCells by remember { mutableStateOf<BmsData?>(null) }
+                var selectedBmsSlot by remember { mutableStateOf<String?>(null) }
                 var showExitDialog by remember { mutableStateOf(false) }
+
+                val b1 by manager.bms1.bmsState.collectAsState()
+                val b2 by manager.bms2.bmsState.collectAsState()
 
                 val pagerState = rememberPagerState(pageCount = { 2 })
                 val coroutineScope = rememberCoroutineScope()
 
-                // 1. If inspecting cells, back gesture returns to the main dashboard
-                BackHandler(enabled = selectedBmsForCells != null) {
-                    selectedBmsForCells = null
+                // 1. If inspecting battery, back gesture returns to the main dashboard
+                BackHandler(enabled = selectedBmsSlot != null) {
+                    selectedBmsSlot = null
                 }
 
                 // 2. If on Page 2 (Energy Flow), back gesture smoothly returns to Page 1 (Telemetry)
-                BackHandler(enabled = selectedBmsForCells == null && pagerState.currentPage == 1) {
+                BackHandler(enabled = selectedBmsSlot == null && pagerState.currentPage == 1) {
                     coroutineScope.launch {
                         pagerState.animateScrollToPage(0)
                     }
                 }
 
                 // 3. If on main homescreen (Page 1), back gesture asks if the user wants to exit
-                BackHandler(enabled = selectedBmsForCells == null && pagerState.currentPage == 0 && !showExitDialog) {
+                BackHandler(enabled = selectedBmsSlot == null && pagerState.currentPage == 0 && !showExitDialog) {
                     showExitDialog = true
                 }
 
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    if (selectedBmsForCells != null) {
-                        CellScreen(
-                            bmsData = selectedBmsForCells!!,
-                            onBack = { selectedBmsForCells = null }
+                    if (selectedBmsSlot != null) {
+                        OfficialJkInspectionScreen(
+                            b1 = b1,
+                            b2 = b2,
+                            initialSlot = selectedBmsSlot!!,
+                            onBack = { selectedBmsSlot = null }
                         )
                     } else {
                         Column(modifier = Modifier.fillMaxSize()) {
@@ -116,11 +121,11 @@ class MainActivity : ComponentActivity() {
                                 when (page) {
                                     0 -> DashboardScreen(
                                         manager = manager,
-                                        onInspectCells = { bms -> selectedBmsForCells = bms }
+                                        onInspectCells = { bms -> selectedBmsSlot = if (bms.id == "B2") "B2" else "B1" }
                                     )
                                     1 -> EnergyFlowScreen(
                                         manager = manager,
-                                        onInspectCells = { bms -> selectedBmsForCells = bms }
+                                        onInspectCells = { bms -> selectedBmsSlot = if (bms.id == "B2") "B2" else "B1" }
                                     )
                                 }
                             }

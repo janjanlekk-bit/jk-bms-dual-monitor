@@ -178,6 +178,10 @@ class Esp32GatewayClient(
         val nomAh = obj.optDouble("nominalAh", 100.0).toFloat()
         val deltaMv = obj.optInt("deltaMv", 0)
         val cycles = obj.optInt("cycles", 0)
+        val rawTempBatt = obj.optDouble("tempBatt", 0.0).toFloat()
+        val rawTempMos = obj.optDouble("tempMos", 0.0).toFloat()
+        val tempBatt = if (rawTempBatt > -90f && rawTempBatt < 120f) rawTempBatt else 25.0f
+        val tempMos = if (rawTempMos > -90f && rawTempMos < 120f) rawTempMos else 28.0f
         val rawName = obj.optString("name", defaultName)
         val name = rawName.replace(" (24S)", "").replace(" (20S)", "").ifBlank { defaultName }
 
@@ -207,6 +211,13 @@ class Esp32GatewayClient(
             remainingCapacityAh = remAh,
             nominalCapacityAh = nomAh,
             totalChargingCycleAh = cycles.toFloat(),
+            temperature = tempBatt,
+            tempMos = tempMos,
+            tempBatt = tempBatt,
+            cycleCount = cycles,
+            isChargeMosOn = isConn,
+            isDischargeMosOn = isConn,
+            isBalanceOn = deltaMv > 5,
             cells = cellsList,
             averageCellVoltage = avgCell,
             minCellVoltage = minCell,
