@@ -1,12 +1,9 @@
 package com.jkbms.dualmonitor.ui
 
-import android.Manifest
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,7 +19,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.jkbms.dualmonitor.ble.BleScanner
 import com.jkbms.dualmonitor.ble.BmsConnectionManager
 import com.jkbms.dualmonitor.model.BmsData
 import kotlinx.coroutines.launch
@@ -31,21 +27,10 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
 
     private lateinit var manager: BmsConnectionManager
-    private lateinit var scanner: BleScanner
-
-    private val permissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val allGranted = permissions.entries.all { it.value }
-        if (allGranted) scanner.startScan()
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         manager = BmsConnectionManager(applicationContext)
-        scanner = BleScanner(applicationContext)
-
-        checkPermissionsAndStart()
 
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(
@@ -55,32 +40,25 @@ class MainActivity : ComponentActivity() {
                 secondary = Color(0xFF2979FF)
             )) {
                 var selectedBmsForCells by remember { mutableStateOf<BmsData?>(null) }
-                var showScanSheet by remember { mutableStateOf(false) }
                 var showExitDialog by remember { mutableStateOf(false) }
 
                 val pagerState = rememberPagerState(pageCount = { 2 })
                 val coroutineScope = rememberCoroutineScope()
 
-                // 1. If scan sheet is open, back gesture closes it
-                BackHandler(enabled = showScanSheet) {
-                    scanner.stopScan()
-                    showScanSheet = false
-                }
-
-                // 2. If inspecting cells, back gesture returns to the main dashboard
-                BackHandler(enabled = !showScanSheet && selectedBmsForCells != null) {
+                // 1. If inspecting cells, back gesture returns to the main dashboard
+                BackHandler(enabled = selectedBmsForCells != null) {
                     selectedBmsForCells = null
                 }
 
-                // 3. If on Page 2 (Energy Flow), back gesture smoothly returns to Page 1 (Telemetry)
-                BackHandler(enabled = !showScanSheet && selectedBmsForCells == null && pagerState.currentPage == 1) {
+                // 2. If on Page 2 (Energy Flow), back gesture smoothly returns to Page 1 (Telemetry)
+                BackHandler(enabled = selectedBmsForCells == null && pagerState.currentPage == 1) {
                     coroutineScope.launch {
                         pagerState.animateScrollToPage(0)
                     }
                 }
 
-                // 4. If on main homescreen (Page 1), back gesture asks if the user wants to exit
-                BackHandler(enabled = !showScanSheet && selectedBmsForCells == null && pagerState.currentPage == 0 && !showExitDialog) {
+                // 3. If on main homescreen (Page 1), back gesture asks if the user wants to exit
+                BackHandler(enabled = selectedBmsForCells == null && pagerState.currentPage == 0 && !showExitDialog) {
                     showExitDialog = true
                 }
 
@@ -138,34 +116,15 @@ class MainActivity : ComponentActivity() {
                                 when (page) {
                                     0 -> DashboardScreen(
                                         manager = manager,
-                                        onOpenScan = {
-                                            scanner.startScan()
-                                            showScanSheet = true
-                                        },
                                         onInspectCells = { bms -> selectedBmsForCells = bms }
                                     )
                                     1 -> EnergyFlowScreen(
                                         manager = manager,
-                                        onOpenScan = {
-                                            scanner.startScan()
-                                            showScanSheet = true
-                                        },
                                         onInspectCells = { bms -> selectedBmsForCells = bms }
                                     )
                                 }
                             }
                         }
-                    }
-
-                    if (showScanSheet) {
-                        ScanBottomSheet(
-                            scanner = scanner,
-                            manager = manager,
-                            onDismiss = {
-                                scanner.stopScan()
-                                showScanSheet = false
-                            }
-                        )
                     }
 
                     if (showExitDialog) {
@@ -214,16 +173,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        scanner.stopScan()
         manager.disconnectAll()
-    }
-
-    private fun checkPermissionsAndStart() {
-        val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
-        } else {
-            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
-        }
-        permissionLauncher.launch(permissions)
     }
 }

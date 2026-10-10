@@ -43,7 +43,6 @@ import kotlin.math.sin
 @Composable
 fun EnergyFlowScreen(
     manager: BmsConnectionManager,
-    onOpenScan: () -> Unit,
     onInspectCells: (BmsData) -> Unit
 ) {
     val b1 by manager.bms1.bmsState.collectAsState()
@@ -59,7 +58,7 @@ fun EnergyFlowScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // 1. Header with Live Status
-        EnergyFlowHeader(bank = bank, onOpenScan = onOpenScan)
+        EnergyFlowHeader(bank = bank)
 
         // 2. Animated SolaX-Style Synoptic Energy Flow Diagram
         EnergyFlowDiagram(
@@ -85,7 +84,7 @@ fun EnergyFlowScreen(
 }
 
 @Composable
-fun EnergyFlowHeader(bank: TotalBankData, onOpenScan: () -> Unit) {
+fun EnergyFlowHeader(bank: TotalBankData) {
     val isCharging = bank.current > 0.05f
     val isDischarging = bank.current < -0.05f
 
@@ -130,13 +129,6 @@ fun EnergyFlowHeader(bank: TotalBankData, onOpenScan: () -> Unit) {
                     color = modeColor
                 )
             }
-        }
-        Button(
-            onClick = onOpenScan,
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
-            shape = RoundedCornerShape(8.dp)
-        ) {
-            Text("PAIR BMS", style = MaterialTheme.typography.labelMedium)
         }
     }
 }

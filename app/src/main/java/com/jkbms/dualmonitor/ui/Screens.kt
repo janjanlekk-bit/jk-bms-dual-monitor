@@ -21,9 +21,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.jkbms.dualmonitor.ble.BleScanner
 import com.jkbms.dualmonitor.ble.BmsConnectionManager
 import com.jkbms.dualmonitor.model.BmsData
 import com.jkbms.dualmonitor.model.CellData
@@ -37,7 +37,6 @@ import java.util.Locale
 @Composable
 fun DashboardScreen(
     manager: BmsConnectionManager,
-    onOpenScan: () -> Unit,
     onInspectCells: (BmsData) -> Unit
 ) {
     val b1 by manager.bms1.bmsState.collectAsState()
@@ -45,7 +44,6 @@ fun DashboardScreen(
     val bank by manager.totalBankState.collectAsState()
     val todayEnergy by manager.energyHistory.todayEnergy.collectAsState()
     val historyList by manager.energyHistory.historyList.collectAsState()
-    val isGateway by manager.isGatewayMode.collectAsState()
     val blePaused by manager.blePaused.collectAsState()
     val bleRemainingSec by manager.bleRemainingSec.collectAsState()
 
@@ -66,68 +64,11 @@ fun DashboardScreen(
             Column {
                 Text("JK DUAL MONITOR", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
                 Text(
-                    text = if (isGateway) "WI-FI GATEWAY (192.168.31.111)" else "LOCAL BLUETOOTH",
+                    text = "ESP32 WI-FI GATEWAY (192.168.31.111)",
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (isGateway) Color(0xFF00E676) else Color.Gray,
+                    color = Color(0xFF00E676),
                     fontWeight = FontWeight.Bold
                 )
-            }
-            Button(
-                onClick = onOpenScan,
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Text("PAIR BMS")
-            }
-        }
-
-        // ESP32 Wi-Fi Gateway Card & Bluetooth Release Control
-        if (isGateway) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = if (blePaused) Color(0xFF3E2723) else Color(0xFF14241A)),
-                border = BorderStroke(1.dp, if (blePaused) Color(0xFFFF5722) else Color(0xFF00E676).copy(alpha = 0.5f))
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp).fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Box(modifier = Modifier.size(8.dp).background(if (blePaused) Color(0xFFFF5722) else Color(0xFF00E676), CircleShape))
-                            Text(
-                                text = if (blePaused) "BLE RELEASED (${bleRemainingSec / 60}:${String.format("%02d", bleRemainingSec % 60)})" else "ESP32 24/7 AUTONOMOUS LOGGING",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = if (blePaused) Color(0xFFFFAB91) else Color(0xFFA5D6A7)
-                            )
-                        }
-                        Text(
-                            text = if (blePaused) "Official JK app can connect now" else "Connected over Wi-Fi • Phone Bluetooth off",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.LightGray
-                        )
-                    }
-                    if (blePaused) {
-                        Button(
-                            onClick = { manager.resumeBle() },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676)),
-                            shape = RoundedCornerShape(6.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                        ) {
-                            Text("RESUME", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                        }
-                    } else {
-                        OutlinedButton(
-                            onClick = { manager.releaseBle(600) },
-                            shape = RoundedCornerShape(6.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                        ) {
-                            Text("RELEASE BLE (10m)", color = Color(0xFF90CAF9), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                }
             }
         }
 
@@ -158,6 +99,56 @@ fun DashboardScreen(
 
         BatteryCard(bms = b1, title = b1Title, onViewCells = { onInspectCells(b1) })
         BatteryCard(bms = b2, title = b2Title, onViewCells = { onInspectCells(b2) })
+
+        // ESP32 Wi-Fi Gateway Card & Bluetooth Release Control placed at the VERY BOTTOM
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = if (blePaused) Color(0xFF3E2723) else Color(0xFF14241A)),
+            border = BorderStroke(1.dp, if (blePaused) Color(0xFFFF5722) else Color(0xFF00E676).copy(alpha = 0.3f))
+        ) {
+            Row(
+                modifier = Modifier.padding(14.dp).fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Box(modifier = Modifier.size(8.dp).background(if (blePaused) Color(0xFFFF5722) else Color(0xFF00E676), CircleShape))
+                        Text(
+                            text = if (blePaused) "BLE RELEASED (${bleRemainingSec / 60}:${String.format("%02d", bleRemainingSec % 60)})" else "ESP32 AUTONOMOUS GATEWAY",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (blePaused) Color(0xFFFFAB91) else Color(0xFFA5D6A7)
+                        )
+                    }
+                    Text(
+                        text = if (blePaused) "Official JK app can connect now" else "24/7 Logging Active • Wi-Fi Gateway Mode",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.LightGray
+                    )
+                }
+                if (blePaused) {
+                    Button(
+                        onClick = { manager.resumeBle() },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676)),
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text("RESUME", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    }
+                } else {
+                    OutlinedButton(
+                        onClick = { manager.releaseBle(600) },
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text("RELEASE BLE (10m)", color = Color(0xFF90CAF9), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
     }
 
     if (showHistoryDialog) {
@@ -999,17 +990,33 @@ fun CellScreen(
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Button(
                 onClick = onBack,
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
             ) {
-                Text("← DASHBOARD", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("← DASHBOARD", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
             }
-            Text("${bmsData.displayName} CELLS", style = MaterialTheme.typography.titleMedium, color = Color.White)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = bmsData.displayName.ifBlank { "BATTERY" },
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "INDIVIDUAL CELL VOLTAGES",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color(0xFF00E676),
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -1105,185 +1112,3 @@ fun CellCard(cell: CellData, isMin: Boolean, isMax: Boolean) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ScanBottomSheet(
-    scanner: BleScanner,
-    manager: BmsConnectionManager,
-    onDismiss: () -> Unit
-) {
-    val devices by scanner.devices.collectAsState()
-    val isScanning by scanner.isScanning.collectAsState()
-    val b1 by manager.bms1.bmsState.collectAsState()
-    val b2 by manager.bms2.bmsState.collectAsState()
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = Color(0xFF161920)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("PAIR JK BMS DEVICES", style = MaterialTheme.typography.titleMedium, color = Color.White)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (isScanning) "Scanning..." else "Idle", color = Color.Gray, fontSize = 12.sp)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    TextButton(onClick = { scanner.startScan(clearExisting = false) }) {
-                        Text("RESCAN", color = MaterialTheme.colorScheme.secondary, fontSize = 12.sp)
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            if (devices.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        if (isScanning) "Scanning for nearby JK BMS BLE devices..."
-                        else "No devices found. Tap RESCAN to search.",
-                        color = Color.Gray,
-                        fontSize = 13.sp
-                    )
-                }
-            }
-
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().heightIn(max = 260.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(devices.size) { index ->
-                    val dev = devices[index]
-                    val isAssignedB1 = b1.macAddress.isNotBlank() && b1.macAddress.equals(dev.address, ignoreCase = true)
-                    val isAssignedB2 = b2.macAddress.isNotBlank() && b2.macAddress.equals(dev.address, ignoreCase = true)
-
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF222631)),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp).fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(dev.name, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                Text(dev.address, color = Color.Gray, fontSize = 11.sp)
-                                Text("${dev.rssi} dBm", color = Color.LightGray, fontSize = 10.sp)
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(
-                                    onClick = { manager.assignB1(dev.address) },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (isAssignedB1) Color(0xFF1565C0) else Color(0xFF2C3240)
-                                    ),
-                                    shape = RoundedCornerShape(6.dp)
-                                ) {
-                                    Text(
-                                        if (isAssignedB1) "✓ B1 Active" else if (isAssignedB2) "Move to B1" else "Set B1",
-                                        fontSize = 11.sp,
-                                        color = if (isAssignedB1) Color.White else Color(0xFF90CAF9)
-                                    )
-                                }
-                                Button(
-                                    onClick = { manager.assignB2(dev.address) },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (isAssignedB2) Color(0xFF2E7D32) else Color(0xFF2C3240)
-                                    ),
-                                    shape = RoundedCornerShape(6.dp)
-                                ) {
-                                    Text(
-                                        if (isAssignedB2) "✓ B2 Active" else if (isAssignedB1) "Move to B2" else "Set B2",
-                                        fontSize = 11.sp,
-                                        color = if (isAssignedB2) Color.White else Color(0xFFA5D6A7)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Quick Connect Card for User's Saved Battery Units
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1F29)),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("DIRECT BMS QUICK PAIR", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
-
-                    val isB1Set = b1.macAddress.equals("C8:47:80:1B:76:00", ignoreCase = true)
-                    val isB2Set = b2.macAddress.equals("C8:47:80:1C:14:68", ignoreCase = true)
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("48V 100ah #1", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            Text("C8:47:80:1B:76:00", color = Color.Gray, fontSize = 10.sp)
-                        }
-                        Button(
-                            onClick = { manager.assignB1("C8:47:80:1B:76:00") },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isB1Set) Color(0xFF1565C0) else Color(0xFF2C3240)
-                            ),
-                            shape = RoundedCornerShape(6.dp)
-                        ) {
-                            Text(
-                                if (isB1Set) "✓ Set as B1" else "Set as B1",
-                                fontSize = 11.sp,
-                                color = if (isB1Set) Color.White else Color(0xFF90CAF9)
-                            )
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("48V 100ah #2", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            Text("C8:47:80:1C:14:68", color = Color.Gray, fontSize = 10.sp)
-                        }
-                        Button(
-                            onClick = { manager.assignB2("C8:47:80:1C:14:68") },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isB2Set) Color(0xFF2E7D32) else Color(0xFF2C3240)
-                            ),
-                            shape = RoundedCornerShape(6.dp)
-                        ) {
-                            Text(
-                                if (isB2Set) "✓ Set as B2" else "Set as B2",
-                                fontSize = 11.sp,
-                                color = if (isB2Set) Color.White else Color(0xFFA5D6A7)
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-            Button(
-                onClick = onDismiss,
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A2F3D)),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Text("DONE / CLOSE", color = Color.White)
-            }
-        }
-    }
-}
