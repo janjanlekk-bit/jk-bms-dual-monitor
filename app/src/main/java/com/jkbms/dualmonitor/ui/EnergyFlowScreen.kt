@@ -51,6 +51,7 @@ fun EnergyFlowScreen(
     val b2 by manager.bms2.bmsState.collectAsState()
     val bank by manager.totalBankState.collectAsState()
     val todayEnergy by manager.energyHistory.todayEnergy.collectAsState()
+    val isGatewayConnected by manager.isGatewayMode.collectAsState()
 
     Column(
         modifier = Modifier
@@ -60,7 +61,7 @@ fun EnergyFlowScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // 1. Header with Live Status
-        EnergyFlowHeader(bank = bank)
+        EnergyFlowHeader(bank = bank, isGatewayConnected = isGatewayConnected)
 
         // 2. Animated SolaX-Style Synoptic Energy Flow Diagram
         EnergyFlowDiagram(
@@ -86,17 +87,19 @@ fun EnergyFlowScreen(
 }
 
 @Composable
-fun EnergyFlowHeader(bank: TotalBankData) {
-    val isCharging = bank.current > 0.05f
-    val isDischarging = bank.current < -0.05f
+fun EnergyFlowHeader(bank: TotalBankData, isGatewayConnected: Boolean = true) {
+    val isCharging = isGatewayConnected && bank.current > 0.05f
+    val isDischarging = isGatewayConnected && bank.current < -0.05f
 
     val modeTitle = when {
+        !isGatewayConnected -> "GATEWAY OFFLINE"
         isCharging -> "SOLAR CHARGING"
         isDischarging -> "BATTERY DISCHARGING"
         else -> "STANDBY / FLOAT"
     }
 
     val modeColor = when {
+        !isGatewayConnected -> Color(0xFFFF5252)
         isCharging -> Color(0xFF00E676)
         isDischarging -> Color(0xFFFF9100)
         else -> Color(0xFF2979FF)

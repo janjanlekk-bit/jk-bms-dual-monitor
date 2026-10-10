@@ -32,6 +32,11 @@ class Esp32GatewayClient(
     val bleRemainingSec = _bleRemainingSec.asStateFlow()
 
     private var pollJob: Job? = null
+    private var lastB1: BmsData? = null
+    private var lastB2: BmsData? = null
+    private var lastBank: TotalBankData? = null
+    private var lastDaily: DailyEnergyRecord? = null
+    private var consecutiveFailures = 0
 
     init {
         startPolling()
@@ -52,16 +57,40 @@ class Esp32GatewayClient(
                 try {
                     val statusJson = fetchJson("http://${_gatewayIp.value}/api/status")
                     if (statusJson != null) {
+                        consecutiveFailures = 0
                         parseAndDispatch(statusJson)
                         _isGatewayConnected.value = true
                     } else {
-                        _isGatewayConnected.value = false
+                        handleGatewayFailure()
                     }
                 } catch (e: Exception) {
-                    _isGatewayConnected.value = false
+                    handleGatewayFailure()
                 }
                 delay(1200) // Poll every 1.2 seconds
             }
+        }
+    }
+
+    private fun handleGatewayFailure() {
+        consecutiveFailures++
+        if (consecutiveFailures >= 2) {
+            _isGatewayConnected.value = false
+            // Mark both BMS slots as DISCONNECTED with 0 current and 0 power so UI updates to OFFLINE
+            val offlineB1 = (lastB1 ?: BmsData(id = "B1", displayName = "48V 100Ah #1")).copy(
+                connectionStatus = ConnectionStatus.DISCONNECTED,
+                current = 0f,
+                power = 0f
+            )
+            val offlineB2 = (lastB2 ?: BmsData(id = "B2", displayName = "48V 100Ah #2")).copy(
+                connectionStatus = ConnectionStatus.DISCONNECTED,
+                current = 0f,
+                power = 0f
+            )
+            val offlineBank = (lastBank ?: TotalBankData()).copy(
+                current = 0f,
+                power = 0f
+            )
+            onDataReceived(offlineB1, offlineB2, offlineBank, lastDaily ?: DailyEnergyRecord())
         }
     }
 
@@ -130,6 +159,11 @@ class Esp32GatewayClient(
             _blePaused.value = false
             _bleRemainingSec.value = 0
         }
+
+        lastB1 = b1Data
+        lastB2 = b2Data
+        lastBank = bankData
+        lastDaily = dailyRecord
 
         onDataReceived(b1Data, b2Data, bankData, dailyRecord)
     }
@@ -215,8 +249,8 @@ class Esp32GatewayClient(
         return try {
             val url = URL(urlString)
             conn = url.openConnection() as HttpURLConnection
-            conn.connectTimeout = 2500
-            conn.readTimeout = 2500
+            conn.connectTimeout = 1500
+            conn.readTimeout = 1500
             if (conn.responseCode == 200) {
                 BufferedReader(InputStreamReader(conn.inputStream)).use { it.readText() }
             } else {

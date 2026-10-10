@@ -46,6 +46,7 @@ fun DashboardScreen(
     val historyList by manager.energyHistory.historyList.collectAsState()
     val blePaused by manager.blePaused.collectAsState()
     val bleRemainingSec by manager.bleRemainingSec.collectAsState()
+    val isGatewayConnected by manager.isGatewayMode.collectAsState()
 
     var showHistoryDialog by remember { mutableStateOf(false) }
 
@@ -63,12 +64,19 @@ fun DashboardScreen(
         ) {
             Column {
                 Text("JK DUAL MONITOR", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
-                Text(
-                    text = "ESP32 WI-FI GATEWAY (192.168.31.111)",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFF00E676),
-                    fontWeight = FontWeight.Bold
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .background(if (isGatewayConnected) Color(0xFF00E676) else Color(0xFFFF5252), CircleShape)
+                    )
+                    Text(
+                        text = if (isGatewayConnected) "ESP32 WI-FI GATEWAY (192.168.31.111)" else "ESP32 GATEWAY OFFLINE (UNREACHABLE)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isGatewayConnected) Color(0xFF00E676) else Color(0xFFFF5252),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
 
@@ -103,8 +111,21 @@ fun DashboardScreen(
         // ESP32 Wi-Fi Gateway Card & Bluetooth Release Control placed at the VERY BOTTOM
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = if (blePaused) Color(0xFF3E2723) else Color(0xFF14241A)),
-            border = BorderStroke(1.dp, if (blePaused) Color(0xFFFF5722) else Color(0xFF00E676).copy(alpha = 0.3f))
+            colors = CardDefaults.cardColors(
+                containerColor = when {
+                    !isGatewayConnected -> Color(0xFF2E1A1A)
+                    blePaused -> Color(0xFF3E2723)
+                    else -> Color(0xFF14241A)
+                }
+            ),
+            border = BorderStroke(
+                1.dp,
+                when {
+                    !isGatewayConnected -> Color(0xFFFF5252).copy(alpha = 0.5f)
+                    blePaused -> Color(0xFFFF5722)
+                    else -> Color(0xFF00E676).copy(alpha = 0.3f)
+                }
+            )
         ) {
             Row(
                 modifier = Modifier.padding(14.dp).fillMaxWidth(),
@@ -113,16 +134,37 @@ fun DashboardScreen(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Box(modifier = Modifier.size(8.dp).background(if (blePaused) Color(0xFFFF5722) else Color(0xFF00E676), CircleShape))
+                        Box(
+                            modifier = Modifier.size(8.dp).background(
+                                when {
+                                    !isGatewayConnected -> Color(0xFFFF5252)
+                                    blePaused -> Color(0xFFFF5722)
+                                    else -> Color(0xFF00E676)
+                                },
+                                CircleShape
+                            )
+                        )
                         Text(
-                            text = if (blePaused) "BLE RELEASED (${bleRemainingSec / 60}:${String.format("%02d", bleRemainingSec % 60)})" else "ESP32 AUTONOMOUS GATEWAY",
+                            text = when {
+                                !isGatewayConnected -> "ESP32 GATEWAY OFFLINE"
+                                blePaused -> "BLE RELEASED (${bleRemainingSec / 60}:${String.format("%02d", bleRemainingSec % 60)})"
+                                else -> "ESP32 AUTONOMOUS GATEWAY"
+                            },
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = if (blePaused) Color(0xFFFFAB91) else Color(0xFFA5D6A7)
+                            color = when {
+                                !isGatewayConnected -> Color(0xFFFF8A80)
+                                blePaused -> Color(0xFFFFAB91)
+                                else -> Color(0xFFA5D6A7)
+                            }
                         )
                     }
                     Text(
-                        text = if (blePaused) "Official JK app can connect now" else "24/7 Logging Active • Wi-Fi Gateway Mode",
+                        text = when {
+                            !isGatewayConnected -> "Unreachable over Wi-Fi • Check ESP32 power"
+                            blePaused -> "Official JK app can connect now"
+                            else -> "24/7 Logging Active • Wi-Fi Gateway Mode"
+                        },
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.LightGray
                     )
@@ -136,7 +178,7 @@ fun DashboardScreen(
                     ) {
                         Text("RESUME", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                     }
-                } else {
+                } else if (isGatewayConnected) {
                     OutlinedButton(
                         onClick = { manager.releaseBle(600) },
                         shape = RoundedCornerShape(6.dp),
