@@ -131,6 +131,20 @@ class BmsConnectionManager(context: Context) {
     val bms2 = BmsConnection("B2", context, scope)
     val energyHistory = EnergyHistoryManager(context, scope)
 
+    val gatewayClient: com.jkbms.dualmonitor.network.Esp32GatewayClient = com.jkbms.dualmonitor.network.Esp32GatewayClient(
+        context = context,
+        scope = scope,
+        onDataReceived = { gB1, gB2, gBank, gDaily ->
+            bms1.updateFromExternal(gB1)
+            bms2.updateFromExternal(gB2)
+            energyHistory.syncFromGateway(gDaily)
+        }
+    )
+
+    val isGatewayMode = gatewayClient.isGatewayConnected
+    val blePaused = gatewayClient.blePaused
+    val bleRemainingSec = gatewayClient.bleRemainingSec
+
     val totalBankState: StateFlow<TotalBankData> = combine(bms1.bmsState, bms2.bmsState) { b1, b2 ->
         val activeBmsList = listOf(b1, b2).filter { it.voltage > 1.0f }
 
@@ -159,24 +173,39 @@ class BmsConnectionManager(context: Context) {
     }.stateIn(scope, SharingStarted.Eagerly, TotalBankData())
 
     init {
-        // Automatically restore and connect previously paired BMS devices
-        val savedB1 = prefs.getString("b1_mac", null)
-        val savedB2 = prefs.getString("b2_mac", null)
-        if (!savedB1.isNullOrBlank()) {
-            bms1.connect(savedB1)
-        }
-        if (!savedB2.isNullOrBlank()) {
-            bms2.connect(savedB2)
+        // Automatically restore and connect previously paired BMS devices when not on gateway
+        scope.launch {
+            gatewayClient.isGatewayConnected.collect { connected ->
+                if (connected) {
+                    bms1.pauseLocalBle()
+                    bms2.pauseLocalBle()
+                } else {
+                    val savedB1 = prefs.getString("b1_mac", null)
+                    val savedB2 = prefs.getString("b2_mac", null)
+                    if (!savedB1.isNullOrBlank()) bms1.connect(savedB1)
+                    if (!savedB2.isNullOrBlank()) bms2.connect(savedB2)
+                }
+            }
         }
 
-        // Keep daily energy and odometer tracking updated
+        // Keep daily energy and odometer tracking updated when running in direct BLE mode
         scope.launch {
             combine(bms1.bmsState, bms2.bmsState, totalBankState) { b1, b2, bank ->
                 Triple(b1, b2, bank)
             }.collect { (b1, b2, bank) ->
-                energyHistory.update(b1, b2, bank, isDualConfigured())
+                if (!gatewayClient.isGatewayConnected.value) {
+                    energyHistory.update(b1, b2, bank, isDualConfigured())
+                }
             }
         }
+    }
+
+    fun releaseBle(seconds: Int = 600) {
+        scope.launch { gatewayClient.releaseBle(seconds) }
+    }
+
+    fun resumeBle() {
+        scope.launch { gatewayClient.resumeBle() }
     }
 
     fun isDualConfigured(): Boolean {

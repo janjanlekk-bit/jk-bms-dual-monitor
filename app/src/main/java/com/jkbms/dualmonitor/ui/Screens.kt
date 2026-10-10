@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -44,6 +45,9 @@ fun DashboardScreen(
     val bank by manager.totalBankState.collectAsState()
     val todayEnergy by manager.energyHistory.todayEnergy.collectAsState()
     val historyList by manager.energyHistory.historyList.collectAsState()
+    val isGateway by manager.isGatewayMode.collectAsState()
+    val blePaused by manager.blePaused.collectAsState()
+    val bleRemainingSec by manager.bleRemainingSec.collectAsState()
 
     var showHistoryDialog by remember { mutableStateOf(false) }
 
@@ -61,7 +65,12 @@ fun DashboardScreen(
         ) {
             Column {
                 Text("JK DUAL MONITOR", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
-                Text("READ-ONLY TELEMETRY", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                Text(
+                    text = if (isGateway) "WI-FI GATEWAY (192.168.31.111)" else "LOCAL BLUETOOTH",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (isGateway) Color(0xFF00E676) else Color.Gray,
+                    fontWeight = FontWeight.Bold
+                )
             }
             Button(
                 onClick = onOpenScan,
@@ -69,6 +78,56 @@ fun DashboardScreen(
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Text("PAIR BMS")
+            }
+        }
+
+        // ESP32 Wi-Fi Gateway Card & Bluetooth Release Control
+        if (isGateway) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = if (blePaused) Color(0xFF3E2723) else Color(0xFF14241A)),
+                border = BorderStroke(1.dp, if (blePaused) Color(0xFFFF5722) else Color(0xFF00E676).copy(alpha = 0.5f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Box(modifier = Modifier.size(8.dp).background(if (blePaused) Color(0xFFFF5722) else Color(0xFF00E676), CircleShape))
+                            Text(
+                                text = if (blePaused) "BLE RELEASED (${bleRemainingSec / 60}:${String.format("%02d", bleRemainingSec % 60)})" else "ESP32 24/7 AUTONOMOUS LOGGING",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (blePaused) Color(0xFFFFAB91) else Color(0xFFA5D6A7)
+                            )
+                        }
+                        Text(
+                            text = if (blePaused) "Official JK app can connect now" else "Connected over Wi-Fi • Phone Bluetooth off",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.LightGray
+                        )
+                    }
+                    if (blePaused) {
+                        Button(
+                            onClick = { manager.resumeBle() },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676)),
+                            shape = RoundedCornerShape(6.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text("RESUME", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = { manager.releaseBle(600) },
+                            shape = RoundedCornerShape(6.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text("RELEASE BLE (10m)", color = Color(0xFF90CAF9), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
             }
         }
 

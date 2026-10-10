@@ -304,4 +304,15 @@ class BmsConnection(
     private fun updateStatus(status: ConnectionStatus) {
         _bmsState.value = _bmsState.value.copy(connectionStatus = status)
     }
+
+    fun updateFromExternal(data: BmsData) {
+        _bmsState.value = data
+    }
+
+    fun pauseLocalBle() {
+        shouldReconnect = false
+        pollingJob?.cancel()
+        timeoutJob?.cancel()
+        cleanupGatt(disconnectFirst = true)
+    }
 }

@@ -565,4 +565,9 @@ class EnergyHistoryManager(
             Log.e("EnergyHistoryManager", "Error loading preferences: ${e.message}")
         }
     }
+
+    @Synchronized
+    fun syncFromGateway(record: DailyEnergyRecord) {
+        _todayEnergy.value = record
+    }
 }

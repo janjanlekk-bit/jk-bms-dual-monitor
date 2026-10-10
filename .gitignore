@@ -1,10 +1,15 @@
-﻿*.iml
+*.iml
 .gradle
 /local.properties
+local.properties
 /.idea/
 .DS_Store
 /build
+app/build/
+*.apk
 /captures
 .externalNativeBuild
 .cxx
-local.properties
+.pio/
+esp32_firmware/.pio/
+esp32_firmware/.vscode/
