@@ -7,7 +7,7 @@
 
 // Nominal Capacities (Ah)
 #define B1_NOMINAL_AH 100.0f
-#define B2_NOMINAL_AH 90.0f
+#define B2_NOMINAL_AH 100.0f
 
 // Frame specifications
 #define JK_FRAME_SIZE 300

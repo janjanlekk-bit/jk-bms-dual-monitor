@@ -69,6 +69,33 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 14
 
+      - name: Set up Python for PlatformIO
+        if: success()
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PlatformIO
+        if: success()
+        continue-on-error: true
+        run: pip install platformio
+
+      - name: Build ESP32 Firmware
+        id: build_esp32
+        if: success()
+        continue-on-error: true
+        run: |
+          cd esp32_firmware
+          pio run
+
+      - name: Upload ESP32 Firmware Artifact
+        if: steps.build_esp32.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: JK-BMS-ESP32-Firmware
+          path: esp32_firmware/.pio/build/esp32dev/firmware.bin
+          retention-days: 14
+
       - name: Publish GitHub Release
         if: success()
         uses: softprops/action-gh-release@v2
@@ -76,7 +103,11 @@ jobs:
           tag_name: v0.1.${{ github.run_number }}
           name: "JK BMS Dual Monitor v0.1.${{ github.run_number }}"
           generate_release_notes: true
-          files: app/build/outputs/apk/release/*.apk
+          files: |
+            app/build/outputs/apk/release/*.apk
+            esp32_firmware/.pio/build/esp32dev/firmware.bin
+          fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 

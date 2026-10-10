@@ -512,9 +512,9 @@ class EnergyHistoryManager(
 
                     // Sanity guard against stale pre-dawn max values from older builds
                     if (loadedChargedAh > 0.05f) {
-                        val maxPossibleSoc = minSoc + ((loadedChargedAh / 190f) * 100f).toInt() + 3
+                        val maxPossibleSoc = minSoc + ((loadedChargedAh / 200f) * 100f).toInt() + 3
                         if (maxSoc > maxPossibleSoc) {
-                            maxSoc = minSoc + ((loadedChargedAh / 190f) * 100f).toInt()
+                            maxSoc = minSoc + ((loadedChargedAh / 200f) * 100f).toInt()
                         }
                         val maxPossibleAh = minAh + loadedChargedAh + 2f
                         if (maxAh > maxPossibleAh) {

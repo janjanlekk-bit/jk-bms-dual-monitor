@@ -96,7 +96,7 @@ fun OfficialJkInspectionScreen(
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Text(
-                        "B2 (90Ah)",
+                        "B2 (100Ah)",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (isB2) Color.Black else Color.Gray

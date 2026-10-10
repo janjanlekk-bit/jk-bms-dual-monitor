@@ -144,13 +144,15 @@ class Esp32GatewayClient(
         // 1. Bank
         val bankObj = root.optJSONObject("bank")
         val bankData = if (bankObj != null) {
+            val rawNom = bankObj.optDouble("nominalAh", 200.0).toFloat()
+            val nomAh = if (rawNom == 190.0f || rawNom <= 10.0f) 200.0f else rawNom
             TotalBankData(
                 voltage = bankObj.optDouble("voltage", 0.0).toFloat(),
                 current = bankObj.optDouble("current", 0.0).toFloat(),
                 power = bankObj.optDouble("power", 0.0).toFloat(),
                 capacityWeightedSoc = bankObj.optInt("weightedSoc", 0),
                 remainingCapacityAh = bankObj.optDouble("remainingAh", 0.0).toFloat(),
-                nominalCapacityAh = bankObj.optDouble("nominalAh", 190.0).toFloat()
+                nominalCapacityAh = nomAh
             )
         } else {
             TotalBankData()
@@ -215,7 +217,8 @@ class Esp32GatewayClient(
         val p = obj.optDouble("power", 0.0).toFloat()
         val soc = obj.optInt("soc", 0)
         val remAh = obj.optDouble("remainingAh", 0.0).toFloat()
-        val nomAh = obj.optDouble("nominalAh", 100.0).toFloat()
+        val rawNomAh = obj.optDouble("nominalAh", 100.0).toFloat()
+        val nomAh = if (rawNomAh == 90.0f || rawNomAh <= 10.0f) 100.0f else rawNomAh
         val deltaMv = obj.optInt("deltaMv", 0)
         val cycles = obj.optInt("cycles", 0)
         val rawTempBatt = obj.optDouble("tempBatt", 0.0).toFloat()
