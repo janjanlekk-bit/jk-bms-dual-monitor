@@ -32,8 +32,6 @@ import com.jkbms.dualmonitor.model.ConnectionStatus
 import com.jkbms.dualmonitor.model.DailyEnergyRecord
 import com.jkbms.dualmonitor.model.TotalBankData
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
-import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -59,7 +57,6 @@ fun DashboardScreen(
     var showHistoryDialog by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
-    val pullRefreshState = rememberPullToRefreshState()
 
     PullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -71,17 +68,7 @@ fun DashboardScreen(
                 isRefreshing = false
             }
         },
-        modifier = Modifier.fillMaxSize(),
-        state = pullRefreshState,
-        indicator = {
-            PullToRefreshDefaults.Indicator(
-                state = pullRefreshState,
-                isRefreshing = isRefreshing,
-                modifier = Modifier.align(Alignment.TopCenter),
-                containerColor = Color(0xFF1E2836),
-                color = Color(0xFF00E676)
-            )
-        }
+        modifier = Modifier.fillMaxSize()
     ) {
         Column(
             modifier = Modifier
