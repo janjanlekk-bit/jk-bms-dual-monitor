@@ -31,11 +31,17 @@ import com.jkbms.dualmonitor.model.CellData
 import com.jkbms.dualmonitor.model.ConnectionStatus
 import com.jkbms.dualmonitor.model.DailyEnergyRecord
 import com.jkbms.dualmonitor.model.TotalBankData
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
     manager: BmsConnectionManager,
@@ -51,14 +57,39 @@ fun DashboardScreen(
     val isGatewayConnected by manager.isGatewayMode.collectAsState()
 
     var showHistoryDialog by remember { mutableStateOf(false) }
+    var isRefreshing by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+    val pullRefreshState = rememberPullToRefreshState()
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = {
+            coroutineScope.launch {
+                isRefreshing = true
+                manager.refreshConnection()
+                delay(800)
+                isRefreshing = false
+            }
+        },
+        modifier = Modifier.fillMaxSize(),
+        state = pullRefreshState,
+        indicator = {
+            PullToRefreshDefaults.Indicator(
+                state = pullRefreshState,
+                isRefreshing = isRefreshing,
+                modifier = Modifier.align(Alignment.TopCenter),
+                containerColor = Color(0xFF1E2836),
+                color = Color(0xFF00E676)
+            )
+        }
     ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -197,6 +228,7 @@ fun DashboardScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
     }
+}
 
     if (showHistoryDialog) {
         EnergyHistoryDialog(
@@ -340,17 +372,24 @@ fun TodayEnergyCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val todayCalStr = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
+                val isNightCycle = record.date.isNotBlank() && record.date != todayCalStr
+                val displayDateText = if (isNightCycle) {
+                    "${formatDisplayDate(record.date)} • Overnight Load Cycle"
+                } else {
+                    formatDisplayDate(record.date.ifBlank { "Today" })
+                }
                 Column {
                     Text(
-                        "TODAY'S ENERGY YIELD & LOAD",
+                        if (isNightCycle) "CYCLE ENERGY YIELD & LOAD" else "TODAY'S ENERGY YIELD & LOAD",
                         style = MaterialTheme.typography.titleMedium,
                         color = Color(0xFF64FFDA),
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        formatDisplayDate(record.date.ifBlank { "Today" }),
+                        displayDateText,
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color.Gray
+                        color = if (isNightCycle) Color(0xFFFFB74D) else Color.Gray
                     )
                 }
             }

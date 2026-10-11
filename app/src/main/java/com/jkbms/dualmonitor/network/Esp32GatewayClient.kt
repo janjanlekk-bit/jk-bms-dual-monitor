@@ -54,6 +54,27 @@ class Esp32GatewayClient(
         }
     }
 
+    suspend fun refresh(): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val statusJson = fetchJson("http://${_gatewayIp.value}/api/status")
+                if (statusJson != null) {
+                    consecutiveFailures = 0
+                    parseAndDispatch(statusJson)
+                    _isGatewayConnected.value = true
+                    fetchAndDispatchHistory()
+                    true
+                } else {
+                    handleGatewayFailure()
+                    false
+                }
+            } catch (e: Exception) {
+                handleGatewayFailure()
+                false
+            }
+        }
+    }
+
     fun startPolling() {
         if (pollJob?.isActive == true) return
         pollJob = scope.launch(Dispatchers.IO) {

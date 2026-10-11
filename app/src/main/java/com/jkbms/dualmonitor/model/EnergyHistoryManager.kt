@@ -38,6 +38,7 @@ class EnergyHistoryManager(
     private var startRemainingTotal: Float = 0f
     private var lastKnownRemainingAh: Float = 0f
     private var isCycleStarted: Boolean = false
+    private var pendingNewCycleChargeAh: Float = 0f
 
     // Live continuous accumulation (while connected via Bluetooth)
     private var liveChargedAh: Float = 0f
@@ -84,18 +85,15 @@ class EnergyHistoryManager(
             return
         }
 
-        // 1. Check for midnight date change / day rollover
-        if (currentDate.isNotBlank() && currentDate != todayStr) {
-            archivePreviousDay()
-            startNewDay(todayStr, b1, b2, bank, isDualConfigured)
-        } else if (currentDate.isBlank()) {
+        // 1. Initialize cycle date if first startup
+        if (currentDate.isBlank()) {
             startNewDay(todayStr, b1, b2, bank, isDualConfigured)
         }
 
         val curRemainingTotal = (if (b1Online) b1.remainingCapacityAh else 0f) +
                                 (if (b2Online) b2.remainingCapacityAh else 0f)
 
-        // 2. Establish baseline if first time connected today
+        // 2. Establish baseline if first time connected
         if (b1Online && !b1HasBaseline) {
             b1StartRemainingAh = b1.remainingCapacityAh
             b1HasBaseline = true
@@ -114,14 +112,23 @@ class EnergyHistoryManager(
         // 3. Energy Integration (Live Shunt Current vs Offline Capacity Catch-up)
         val isReconnectionGap = (lastIntegrationTimeMs == 0L) || ((now - lastIntegrationTimeMs) > 15_000L)
         val avgV = if (bank.voltage in 20f..150f) bank.voltage else 52.0f
+        val isNewCalendarDay = (currentDate.isNotBlank() && currentDate != todayStr)
 
         if (isReconnectionGap) {
             // Reconnected after being disconnected or app was closed
             if (lastKnownRemainingAh > 0.1f && curRemainingTotal > 0.1f) {
                 val deltaAh = curRemainingTotal - lastKnownRemainingAh
                 if (deltaAh > 0.2f) { // Capacity gained while disconnected (solar charging into battery)
-                    offlineChargedAh += deltaAh
-                    offlineChargedKwh += (deltaAh * avgV) / 1000f
+                    if (isNewCalendarDay) {
+                        // Morning solar charging gained on a new calendar day -> triggers next charging cycle!
+                        archivePreviousDay()
+                        startNewDay(todayStr, b1, b2, bank, isDualConfigured)
+                        offlineChargedAh = deltaAh
+                        offlineChargedKwh = (deltaAh * avgV) / 1000f
+                    } else {
+                        offlineChargedAh += deltaAh
+                        offlineChargedKwh += (deltaAh * avgV) / 1000f
+                    }
                     Log.d("EnergyHistoryManager", "Offline charge catch-up: +${deltaAh}Ah (+${(deltaAh * avgV) / 1000f}kWh)")
                 } else if (deltaAh < -0.2f) { // Capacity lost while disconnected (loads discharging from battery)
                     val dropAh = -deltaAh
@@ -141,15 +148,32 @@ class EnergyHistoryManager(
                 if (currentA > 0.05f) { // Charging into battery (solar yield)
                     val dAh = (currentA * dtSeconds) / 3600f
                     val dKwh = (powerW * dtSeconds) / (3600f * 1000f)
-                    liveChargedAh += dAh
-                    liveChargedKwh += max(0f, dKwh)
+
+                    if (isNewCalendarDay) {
+                        // Past midnight and charging current detected: accumulate to verify morning solar cycle
+                        pendingNewCycleChargeAh += dAh
+                        if (pendingNewCycleChargeAh >= 0.05f) {
+                            // Threshold reached: New morning charging cycle has officially begun!
+                            archivePreviousDay()
+                            startNewDay(todayStr, b1, b2, bank, isDualConfigured)
+                            liveChargedAh = pendingNewCycleChargeAh
+                            liveChargedKwh = max(0f, (pendingNewCycleChargeAh * avgV) / 1000f)
+                            pendingNewCycleChargeAh = 0f
+                        }
+                    } else {
+                        liveChargedAh += dAh
+                        liveChargedKwh += max(0f, dKwh)
+                    }
                 } else if (currentA < -0.05f) { // Discharging from battery (house load)
                     val absCurrent = -currentA
                     val absPower = -powerW
                     val dAh = (absCurrent * dtSeconds) / 3600f
                     val dKwh = (absPower * dtSeconds) / (3600f * 1000f)
+
+                    // Load continues accumulating through day and all night!
                     liveDischargedAh += dAh
                     liveDischargedKwh += max(0f, dKwh)
+                    pendingNewCycleChargeAh = 0f // Reset noise counter on load discharge
                 }
             }
             if (curRemainingTotal > 0.1f) {
@@ -158,79 +182,42 @@ class EnergyHistoryManager(
         }
         lastIntegrationTimeMs = now
 
-        // Total nominal capacity of the active bank
+        // Midday safety fallback: If date changed and it is already midday (>= 12 PM) with 0 solar charging,
+        // archive completed cycle and rollover to today so cycle doesn't remain un-archived indefinitely.
+        if (isNewCalendarDay && Calendar.getInstance().get(Calendar.HOUR_OF_DAY) >= 12) {
+            archivePreviousDay()
+            startNewDay(todayStr, b1, b2, bank, isDualConfigured)
+        }
+
+        // 4. Compute unified energy totals
         val totalNominal = (if (b1Online) b1.nominalCapacityAh else 0f) +
                            (if (b2Online) b2.nominalCapacityAh else 0f)
         val bankCap = if (totalNominal > 20f) totalNominal else 200f
 
         val effectiveChargedAh = liveChargedAh + offlineChargedAh
-
-        // Cycle transition: Morning solar charging has begun!
-        if (effectiveChargedAh > 0.05f && !isCycleStarted) {
-            isCycleStarted = true
-            val totalPreDawnDischargedAh = liveDischargedAh + offlineDischargedAh
-            val totalPreDawnDischargedKwh = max(liveDischargedKwh + offlineDischargedKwh, (totalPreDawnDischargedAh * avgV) / 1000f)
-
-            if (totalPreDawnDischargedAh > 0.05f) {
-                attachPredawnToPreviousDay(totalPreDawnDischargedAh, totalPreDawnDischargedKwh)
-                // Reset today's discharge accumulators to start fresh for this new solar charge cycle
-                liveDischargedAh = 0f
-                liveDischargedKwh = 0f
-                offlineDischargedAh = 0f
-                offlineDischargedKwh = 0f
-            }
-        }
-
-        // 4. Compute unified energy totals
         val effectiveDischargedAh = liveDischargedAh + offlineDischargedAh
 
         val effectiveChargedKwh = max(liveChargedKwh + offlineChargedKwh, (effectiveChargedAh * avgV) / 1000f)
         val effectiveDischargedKwh = max(liveDischargedKwh + offlineDischargedKwh, (effectiveDischargedAh * avgV) / 1000f)
 
-        // 5. Update min and max SOC & Ah based on the day's solar cycle
+        // 5. Update min and max SOC & Ah based on cycle
         val currentSoc = bank.capacityWeightedSoc
         if (currentSoc in 1..100) {
             if (startSoc == 0) startSoc = currentSoc
-
-            if (effectiveChargedAh <= 0.05f) {
-                // Pre-dawn / night discharge: No solar charging has occurred yet today.
-                // Keep min & max aligned with current battery level so midnight residual levels don't create false daily highs.
-                minSoc = currentSoc
-                maxSoc = currentSoc
-            } else {
-                // Solar charging has begun:
-                // minSoc locks in the morning low (or lower if dipped), and maxSoc climbs with solar charge.
-                minSoc = if (minSoc == 0) currentSoc else min(minSoc, currentSoc)
-                maxSoc = if (maxSoc == 0) currentSoc else max(maxSoc, currentSoc)
-
-                // Sanity guard against stale pre-dawn max values:
-                val maxPossibleSolarSoc = minSoc + ((effectiveChargedAh / bankCap) * 100f).toInt() + 3
-                if (maxSoc > maxPossibleSolarSoc) {
-                    maxSoc = max(minSoc, currentSoc)
-                }
-            }
+            minSoc = if (minSoc == 0) currentSoc else min(minSoc, currentSoc)
+            maxSoc = if (maxSoc == 0) currentSoc else max(maxSoc, currentSoc)
         }
 
         if (curRemainingTotal > 0.1f) {
-            if (effectiveChargedAh <= 0.05f) {
-                minAh = curRemainingTotal
-                maxAh = curRemainingTotal
-            } else {
-                minAh = if (minAh <= 0.1f) curRemainingTotal else min(minAh, curRemainingTotal)
-                maxAh = if (maxAh <= 0.1f) curRemainingTotal else max(maxAh, curRemainingTotal)
-
-                val maxPossibleSolarAh = minAh + effectiveChargedAh + 2f
-                if (maxAh > maxPossibleSolarAh) {
-                    maxAh = max(minAh, curRemainingTotal)
-                }
-            }
+            minAh = if (minAh <= 0.1f) curRemainingTotal else min(minAh, curRemainingTotal)
+            maxAh = if (maxAh <= 0.1f) curRemainingTotal else max(maxAh, curRemainingTotal)
         }
 
         val effectiveMinAh = if (minAh > 0.1f) minAh else if (minSoc in 1..100) (minSoc.toFloat() / 100f) * bankCap else 0f
         val effectiveMaxAh = if (maxAh > 0.1f) maxAh else if (maxSoc in 1..100) (maxSoc.toFloat() / 100f) * bankCap else 0f
 
         val updatedRecord = DailyEnergyRecord(
-            date = todayStr,
+            date = currentDate,
             chargedAh = effectiveChargedAh,
             dischargedAh = effectiveDischargedAh,
             chargedKwh = effectiveChargedKwh,
@@ -262,45 +249,9 @@ class EnergyHistoryManager(
         }
     }
 
-    private fun attachPredawnToPreviousDay(ah: Float, kwh: Float) {
-        if (ah <= 0.05f && kwh <= 0.001f) return
-        try {
-            val currentHistory = _historyList.value.toMutableList()
-            val prevIndex = currentHistory.indexOfFirst { it.date.isNotBlank() && it.date != currentDate }
-            if (prevIndex >= 0) {
-                val prev = currentHistory[prevIndex]
-                val updatedPrev = prev.copy(
-                    dischargedAh = prev.dischargedAh + ah,
-                    dischargedKwh = prev.dischargedKwh + kwh,
-                    lastUpdated = System.currentTimeMillis()
-                )
-                currentHistory[prevIndex] = updatedPrev
-                _historyList.value = currentHistory
-                saveHistoryList(currentHistory)
-                Log.d("EnergyHistoryManager", "Attached predawn load to ${prev.date}: +${ah}Ah (+${kwh}kWh)")
-            } else {
-                val cal = Calendar.getInstance()
-                cal.add(Calendar.DAY_OF_YEAR, -1)
-                val yesterdayStr = dateFormat.format(cal.time)
-                val newPrev = DailyEnergyRecord(
-                    date = yesterdayStr,
-                    dischargedAh = ah,
-                    dischargedKwh = kwh,
-                    lastUpdated = System.currentTimeMillis()
-                )
-                currentHistory.add(0, newPrev)
-                _historyList.value = currentHistory
-                saveHistoryList(currentHistory)
-                Log.d("EnergyHistoryManager", "Created yesterday record for predawn load: $yesterdayStr: +${ah}Ah (+${kwh}kWh)")
-            }
-        } catch (e: Exception) {
-            Log.e("EnergyHistoryManager", "Error attaching predawn load: ${e.message}")
-        }
-    }
-
     private fun startNewDay(todayStr: String, b1: BmsData, b2: BmsData, bank: TotalBankData, isDualConfigured: Boolean = false) {
         currentDate = todayStr
-        isCycleStarted = false
+        isCycleStarted = true
         liveChargedAh = 0f
         liveDischargedAh = 0f
         liveChargedKwh = 0f
@@ -309,6 +260,7 @@ class EnergyHistoryManager(
         offlineDischargedAh = 0f
         offlineChargedKwh = 0f
         offlineDischargedKwh = 0f
+        pendingNewCycleChargeAh = 0f
 
         val b1Online = b1.voltage > 10f
         val b2Online = b2.voltage > 10f
@@ -460,24 +412,22 @@ class EnergyHistoryManager(
                 val savedDate = obj.optString("date", "")
                 val todayStr = getTodayDateString()
 
-                if (savedDate == todayStr) {
+                val isPastMidday = Calendar.getInstance().get(Calendar.HOUR_OF_DAY) >= 12
+                val shouldContinueCycle = (savedDate == todayStr) || (savedDate.isNotBlank() && !isPastMidday)
+
+                if (shouldContinueCycle) {
                     currentDate = savedDate
 
-                    // Discard legacy buggy odometer values if present from prior builds
-                    val isLegacyBuggy = obj.has("b1StartCycleAh") && !obj.has("offlineChargedAh")
-
-                    if (!isLegacyBuggy) {
-                        liveChargedAh = obj.optDouble("liveChargedAh", 0.0).toFloat()
-                        liveDischargedAh = obj.optDouble("liveDischargedAh", 0.0).toFloat()
-                        liveChargedKwh = obj.optDouble("liveChargedKwh", 0.0).toFloat()
-                        liveDischargedKwh = obj.optDouble("liveDischargedKwh", 0.0).toFloat()
-                        offlineChargedAh = obj.optDouble("offlineChargedAh", 0.0).toFloat()
-                        offlineDischargedAh = obj.optDouble("offlineDischargedAh", 0.0).toFloat()
-                        offlineChargedKwh = obj.optDouble("offlineChargedKwh", 0.0).toFloat()
-                        offlineDischargedKwh = obj.optDouble("offlineDischargedKwh", 0.0).toFloat()
-                        lastKnownRemainingAh = obj.optDouble("lastKnownRemainingAh", 0.0).toFloat()
-                        startRemainingTotal = obj.optDouble("startRemainingTotal", 0.0).toFloat()
-                    }
+                    liveChargedAh = obj.optDouble("liveChargedAh", 0.0).toFloat()
+                    liveDischargedAh = obj.optDouble("liveDischargedAh", 0.0).toFloat()
+                    liveChargedKwh = obj.optDouble("liveChargedKwh", 0.0).toFloat()
+                    liveDischargedKwh = obj.optDouble("liveDischargedKwh", 0.0).toFloat()
+                    offlineChargedAh = obj.optDouble("offlineChargedAh", 0.0).toFloat()
+                    offlineDischargedAh = obj.optDouble("offlineDischargedAh", 0.0).toFloat()
+                    offlineChargedKwh = obj.optDouble("offlineChargedKwh", 0.0).toFloat()
+                    offlineDischargedKwh = obj.optDouble("offlineDischargedKwh", 0.0).toFloat()
+                    lastKnownRemainingAh = obj.optDouble("lastKnownRemainingAh", 0.0).toFloat()
+                    startRemainingTotal = obj.optDouble("startRemainingTotal", 0.0).toFloat()
 
                     b1StartRemainingAh = obj.optDouble("b1StartRemainingAh", 0.0).toFloat()
                     b2StartRemainingAh = obj.optDouble("b2StartRemainingAh", 0.0).toFloat()
@@ -488,39 +438,12 @@ class EnergyHistoryManager(
                     minAh = obj.optDouble("minAh", 0.0).toFloat()
                     maxAh = obj.optDouble("maxAh", 0.0).toFloat()
                     startSoc = obj.optInt("startSoc", minSoc)
-                    isCycleStarted = obj.optBoolean("isCycleStarted", false)
+                    isCycleStarted = obj.optBoolean("isCycleStarted", true)
 
-                    val loadedChargedAh = if (isLegacyBuggy) 0f else obj.optDouble("chargedAh", 0.0).toFloat()
-                    var loadedDischargedAh = if (isLegacyBuggy) 0f else obj.optDouble("dischargedAh", 0.0).toFloat()
-                    val loadedChargedKwh = if (isLegacyBuggy) 0f else obj.optDouble("chargedKwh", 0.0).toFloat()
-                    var loadedDischargedKwh = if (isLegacyBuggy) 0f else obj.optDouble("dischargedKwh", 0.0).toFloat()
-
-                    // Cycle transition: If solar charging was already underway today but isCycleStarted wasn't marked,
-                    // roll pre-dawn discharge into yesterday's record and start today's load count fresh!
-                    if (loadedChargedAh > 0.05f && !isCycleStarted) {
-                        isCycleStarted = true
-                        if (loadedDischargedAh > 0.05f) {
-                            attachPredawnToPreviousDay(loadedDischargedAh, loadedDischargedKwh)
-                            loadedDischargedAh = 0f
-                            loadedDischargedKwh = 0f
-                            liveDischargedAh = 0f
-                            liveDischargedKwh = 0f
-                            offlineDischargedAh = 0f
-                            offlineDischargedKwh = 0f
-                        }
-                    }
-
-                    // Sanity guard against stale pre-dawn max values from older builds
-                    if (loadedChargedAh > 0.05f) {
-                        val maxPossibleSoc = minSoc + ((loadedChargedAh / 200f) * 100f).toInt() + 3
-                        if (maxSoc > maxPossibleSoc) {
-                            maxSoc = minSoc + ((loadedChargedAh / 200f) * 100f).toInt()
-                        }
-                        val maxPossibleAh = minAh + loadedChargedAh + 2f
-                        if (maxAh > maxPossibleAh) {
-                            maxAh = minAh + loadedChargedAh
-                        }
-                    }
+                    val loadedChargedAh = obj.optDouble("chargedAh", 0.0).toFloat()
+                    val loadedDischargedAh = obj.optDouble("dischargedAh", 0.0).toFloat()
+                    val loadedChargedKwh = obj.optDouble("chargedKwh", 0.0).toFloat()
+                    val loadedDischargedKwh = obj.optDouble("dischargedKwh", 0.0).toFloat()
 
                     _todayEnergy.value = DailyEnergyRecord(
                         date = savedDate,
@@ -535,7 +458,7 @@ class EnergyHistoryManager(
                         lastUpdated = obj.optLong("lastUpdated", 0L)
                     )
                 } else if (savedDate.isNotBlank()) {
-                    // It's from a previous day that was not yet archived
+                    // It's from a previous day and already past midday: archive it
                     val oldRecord = DailyEnergyRecord(
                         date = savedDate,
                         chargedAh = obj.optDouble("chargedAh", 0.0).toFloat(),

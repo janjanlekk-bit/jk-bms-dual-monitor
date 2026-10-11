@@ -69,7 +69,13 @@ class BmsConnectionManager(context: Context) {
         scope.launch { gatewayClient.resumeBle() }
     }
 
-    fun isDualConfigured(): Boolean = true
+    suspend fun refreshConnection() {
+        val gwOk = gatewayClient.refresh()
+        if (!gwOk) {
+            bms1.reconnect()
+            bms2.reconnect()
+        }
+    }
 
     fun disconnectAll() {
         gatewayClient.stopPolling()

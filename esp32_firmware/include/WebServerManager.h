@@ -152,6 +152,7 @@ private:
         bank["minAh"] = energy->today.minAh;
         bank["maxAh"] = energy->today.maxAh;
         bank["isCycleStarted"] = energy->isCycleStarted;
+        bank["date"] = energy->today.date;
 
         // Take lightweight snapshots under mutex
         BmsSnap s1, s2;

@@ -281,6 +281,13 @@ class BmsConnection(
         }
     }
 
+    fun reconnect() {
+        val addr = macAddress
+        if (!addr.isNullOrBlank()) {
+            connect(addr)
+        }
+    }
+
     fun disconnect() {
         shouldReconnect = false
         pollingJob?.cancel()

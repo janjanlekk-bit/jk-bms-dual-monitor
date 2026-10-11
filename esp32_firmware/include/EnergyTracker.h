@@ -23,6 +23,7 @@ private:
     Preferences prefs;
     unsigned long lastIntegrationMs = 0;
     unsigned long lastSaveMs = 0;
+    float newCyclePendingChargedAh = 0.0f;
 
 public:
     DailyRecord today;
@@ -63,80 +64,103 @@ public:
             return;
         }
 
-        // 1. Day Rollover Check
         String nowDat = getSystemDateString();
-        if (currentDate.length() > 0 && nowDat != currentDate) {
-            archiveDay();
-            currentDate = nowDat;
-            today = DailyRecord();
-            today.date = currentDate;
-            today.startSoc = currentSoc;
-            today.minSoc = currentSoc;
-            today.maxSoc = currentSoc;
-            today.minAh = currentAh;
-            today.maxAh = currentAh;
-            isCycleStarted = false;
-            saveState();
-        } else if (currentDate.length() == 0) {
+        if (currentDate.length() == 0) {
             currentDate = nowDat;
             today.date = currentDate;
         }
 
-        // 2. Coulomb Counting Integration
+        // Check if calendar date has passed since this cycle started
+        bool isNewCalendarDay = (currentDate.length() > 0 && nowDat != currentDate);
+
+        // 1. Coulomb Counting Integration
         if (bankI > 0.05f) { // Solar charging into battery
             float dAh = (bankI * dt) / 3600.0f;
             float dKwh = (bankW * dt) / (3600.0f * 1000.0f);
-            today.solarChargedAh += dAh;
-            today.solarChargedKwh += (dKwh > 0.0f) ? dKwh : (dAh * bankV) / 1000.0f;
+            float actualKwh = (dKwh > 0.0f) ? dKwh : (dAh * bankV) / 1000.0f;
+
+            if (isNewCalendarDay) {
+                // Past midnight on a new day: accumulate morning charging current
+                newCyclePendingChargedAh += dAh;
+
+                // When confirmed morning solar charging begins (>= 0.05 Ah):
+                // The previous 24h cycle is complete, and the new charging cycle starts!
+                if (newCyclePendingChargedAh >= 0.05f) {
+                    archiveDay(); // Save completed full-cycle load & solar to yesterday
+
+                    // Reset today for the new charging cycle
+                    currentDate = nowDat;
+                    today = DailyRecord();
+                    today.date = currentDate;
+                    today.solarChargedAh = newCyclePendingChargedAh;
+                    today.solarChargedKwh = (newCyclePendingChargedAh * bankV) / 1000.0f;
+                    today.loadConsumedAh = 0.0f; // Resets to zero upon next charging cycle!
+                    today.loadConsumedKwh = 0.0f;
+                    today.startSoc = currentSoc;
+                    today.minSoc = currentSoc;
+                    today.maxSoc = currentSoc;
+                    today.minAh = currentAh;
+                    today.maxAh = currentAh;
+                    today.endSoc = currentSoc;
+                    isCycleStarted = true;
+                    newCyclePendingChargedAh = 0.0f;
+                    saveState();
+                }
+            } else {
+                // Normal daytime charging during the active cycle
+                today.solarChargedAh += dAh;
+                today.solarChargedKwh += actualKwh;
+            }
         } else if (bankI < -0.05f) { // Discharging to house loads
             float absI = -bankI;
             float absW = -bankW;
             float dAh = (absI * dt) / 3600.0f;
             float dKwh = (absW * dt) / (3600.0f * 1000.0f);
+            float actualKwh = (dKwh > 0.0f) ? dKwh : (dAh * bankV) / 1000.0f;
+
+            // Load consumed CONTINUES to accumulate through the day and all night!
             today.loadConsumedAh += dAh;
-            today.loadConsumedKwh += (dKwh > 0.0f) ? dKwh : (dAh * bankV) / 1000.0f;
+            today.loadConsumedKwh += actualKwh;
+            newCyclePendingChargedAh = 0.0f; // Reset noise counter on load discharge
         }
 
-        // 3. Morning Solar Charging Cycle Detection
-        if (today.solarChargedAh > 0.05f && !isCycleStarted) {
-            isCycleStarted = true;
-            // Roll pre-dawn midnight-to-morning consumption into yesterday's record
-            if (today.loadConsumedAh > 0.05f) {
-                yesterday.loadConsumedAh += today.loadConsumedAh;
-                yesterday.loadConsumedKwh += today.loadConsumedKwh;
-                today.loadConsumedAh = 0.0f;
-                today.loadConsumedKwh = 0.0f;
+        // 2. Midday Safety Fallback:
+        // If calendar day changed and it is already noon (12:00 PM) with 0 solar charging,
+        // archive and rollover so cycle does not remain un-archived indefinitely.
+        if (isNewCalendarDay) {
+            struct tm timeinfo;
+            if (getLocalTime(&timeinfo, 10)) {
+                if (timeinfo.tm_hour >= 12) {
+                    archiveDay();
+                    currentDate = nowDat;
+                    today = DailyRecord();
+                    today.date = currentDate;
+                    today.startSoc = currentSoc;
+                    today.minSoc = currentSoc;
+                    today.maxSoc = currentSoc;
+                    today.minAh = currentAh;
+                    today.maxAh = currentAh;
+                    today.endSoc = currentSoc;
+                    isCycleStarted = false;
+                    newCyclePendingChargedAh = 0.0f;
+                    saveState();
+                }
             }
-            // Lock morning low
-            today.minSoc = currentSoc;
-            today.maxSoc = currentSoc;
-            today.minAh = currentAh;
-            today.maxAh = currentAh;
         }
 
-        // 4. Daily SOC & Ah Range
+        // 3. Cycle SOC & Ah Range tracking
         if (currentSoc > 0 && currentSoc <= 100) {
             if (today.startSoc == 0) today.startSoc = currentSoc;
-
-            if (!isCycleStarted) {
-                // Pre-dawn night: follow current SOC down so midnight residual doesn't create false daily highs
-                today.minSoc = currentSoc;
-                today.maxSoc = currentSoc;
-                today.minAh = currentAh;
-                today.maxAh = currentAh;
-            } else {
-                // Daytime solar cycle: track from morning bottom upwards
-                if (currentSoc < today.minSoc) today.minSoc = currentSoc;
-                if (currentSoc > today.maxSoc) today.maxSoc = currentSoc;
-                if (currentAh > 0.0f) {
-                    if (today.minAh <= 0.1f || currentAh < today.minAh) today.minAh = currentAh;
-                    if (currentAh > today.maxAh) today.maxAh = currentAh;
-                }
+            if (today.minSoc == 0 || currentSoc < today.minSoc) today.minSoc = currentSoc;
+            if (today.maxSoc == 0 || currentSoc > today.maxSoc) today.maxSoc = currentSoc;
+            if (currentAh > 0.0f) {
+                if (today.minAh <= 0.1f || currentAh < today.minAh) today.minAh = currentAh;
+                if (currentAh > today.maxAh) today.maxAh = currentAh;
             }
             today.endSoc = currentSoc;
         }
 
-        // 5. Periodic NVS Auto-save (every 60 seconds)
+        // 4. Periodic NVS Auto-save (every 60 seconds)
         if (now - lastSaveMs > 60000) {
             lastSaveMs = now;
             saveState();
