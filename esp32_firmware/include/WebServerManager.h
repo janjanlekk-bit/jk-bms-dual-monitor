@@ -81,6 +81,7 @@ public:
                 HTTPUpload& upload = server.upload();
                 if (upload.status == UPLOAD_FILE_START) {
                     Serial.printf("[OTA] Firmware update started: %s\n", upload.filename.c_str());
+                    if (ble) ble->pauseBle(600); // Pause BLE & free heap/radio for flash write
                     if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
                         Update.printError(Serial);
                     }
@@ -93,6 +94,7 @@ public:
                         Serial.printf("[OTA] Update Success: %u bytes! Rebooting...\n", upload.totalSize);
                     } else {
                         Update.printError(Serial);
+                        if (ble) ble->resumeBle();
                     }
                 }
             }
