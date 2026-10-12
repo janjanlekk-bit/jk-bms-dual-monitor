@@ -32,7 +32,6 @@ public:
         }
 
         client.setInsecure();
-        client.setBufferSizes(2048, 1024);
         client.setTimeout(3000);
 
         httpTelemetry.setReuse(true);

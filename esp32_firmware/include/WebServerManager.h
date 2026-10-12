@@ -135,6 +135,7 @@ private:
         }
     }
 
+public:
     String buildStatusJson() {
         JsonDocument doc;
 
