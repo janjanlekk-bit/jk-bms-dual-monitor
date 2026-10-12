@@ -7,10 +7,12 @@
 #include "BleManager.h"
 #include "EnergyTracker.h"
 #include "WebServerManager.h"
+#include "FirebaseManager.h"
 
 BleManager bleManager;
 EnergyTracker energyTracker;
 WebServerManager webServerManager;
+FirebaseManager firebaseManager;
 
 unsigned long lastEnergyUpdateMs = 0;
 
@@ -66,12 +68,20 @@ void setup() {
 
     // 4. Start Web Server and REST API (Runs on Core 1)
     webServerManager.begin(&bleManager, &energyTracker);
+
+    // 5. Initialize Firebase Realtime Database Sync (Runs on Core 1)
+    firebaseManager.begin(&webServerManager);
+    Serial.println("[FIREBASE] Realtime Database sync initialized");
+
     Serial.println("[SYSTEM] Setup completed successfully!");
 }
 
 void loop() {
     // WebServer client handling on Core 1
     webServerManager.update();
+
+    // Firebase background sync on Core 1
+    firebaseManager.update();
 
     unsigned long now = millis();
     if (now - lastEnergyUpdateMs >= 1000) {

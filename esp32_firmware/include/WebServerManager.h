@@ -28,6 +28,9 @@ public:
     BleManager* ble = nullptr;
     EnergyTracker* energy = nullptr;
 
+    std::function<void()> onOtaStart = nullptr;
+    std::function<void()> onOtaFail = nullptr;
+
     void begin(BleManager* b, EnergyTracker* e) {
         ble = b;
         energy = e;
@@ -82,6 +85,7 @@ public:
                 if (upload.status == UPLOAD_FILE_START) {
                     Serial.printf("[OTA] Firmware update started: %s\n", upload.filename.c_str());
                     if (ble) ble->pauseBle(600); // Pause BLE & free heap/radio for flash write
+                    if (onOtaStart) onOtaStart();
                     if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
                         Update.printError(Serial);
                     }
@@ -95,6 +99,7 @@ public:
                     } else {
                         Update.printError(Serial);
                         if (ble) ble->resumeBle();
+                        if (onOtaFail) onOtaFail();
                     }
                 }
             }
@@ -129,7 +134,7 @@ private:
         }
     }
 
-    void handleApiStatus() {
+    String buildStatusJson() {
         JsonDocument doc;
 
         float bankV, bankI, bankW, totalRemAh, totalNomAh;
@@ -216,10 +221,10 @@ private:
 
         String json;
         serializeJson(doc, json);
-        server.send(200, "application/json", json);
+        return json;
     }
 
-    void handleApiHistory() {
+    String buildHistoryJson() {
         JsonDocument doc;
 
         JsonObject t = doc["today"].to<JsonObject>();
@@ -246,7 +251,15 @@ private:
 
         String json;
         serializeJson(doc, json);
-        server.send(200, "application/json", json);
+        return json;
+    }
+
+    void handleApiStatus() {
+        server.send(200, "application/json", buildStatusJson());
+    }
+
+    void handleApiHistory() {
+        server.send(200, "application/json", buildHistoryJson());
     }
 
     void handleResetWifi() {

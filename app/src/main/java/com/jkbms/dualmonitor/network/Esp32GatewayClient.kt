@@ -15,6 +15,12 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+enum class GatewayConnectionMode {
+    OFFLINE,
+    LOCAL_WIFI,
+    FIREBASE_CLOUD
+}
+
 class Esp32GatewayClient(
     private val context: Context,
     private val scope: CoroutineScope,
@@ -25,6 +31,15 @@ class Esp32GatewayClient(
 
     private val _gatewayIp = MutableStateFlow(prefs.getString("esp32_ip", "192.168.31.111") ?: "192.168.31.111")
     val gatewayIp = _gatewayIp.asStateFlow()
+
+    private val _firebaseUrl = MutableStateFlow(
+        prefs.getString("firebase_url", "https://jkbms-monitor-963f7-default-rtdb.asia-southeast1.firebasedatabase.app")
+            ?: "https://jkbms-monitor-963f7-default-rtdb.asia-southeast1.firebasedatabase.app"
+    )
+    val firebaseUrl = _firebaseUrl.asStateFlow()
+
+    private val _connectionMode = MutableStateFlow(GatewayConnectionMode.OFFLINE)
+    val connectionMode = _connectionMode.asStateFlow()
 
     private val _isGatewayConnected = MutableStateFlow(false)
     val isGatewayConnected = _isGatewayConnected.asStateFlow()
@@ -54,15 +69,41 @@ class Esp32GatewayClient(
         }
     }
 
+    fun setFirebaseUrl(url: String) {
+        val clean = cleanFirebaseUrl(url)
+        if (clean.isNotBlank()) {
+            _firebaseUrl.value = clean
+            prefs.edit().putString("firebase_url", clean).apply()
+        }
+    }
+
+    private fun cleanFirebaseUrl(url: String): String {
+        return url.trim().removeSuffix("/")
+    }
+
     suspend fun refresh(): Boolean {
         return withContext(Dispatchers.IO) {
             try {
-                val statusJson = fetchJson("http://${_gatewayIp.value}/api/status")
+                var usedCloud = false
+                // 1. Try local Wi-Fi first (fast 1200ms timeout)
+                var statusJson = fetchJson("http://${_gatewayIp.value}/api/status", timeoutMs = 1200)
+
+                // 2. If local fails (e.g. mobile data outside), fallback to Firebase Realtime Database
+                if (statusJson == null && _firebaseUrl.value.isNotBlank()) {
+                    val cloudUrl = "${cleanFirebaseUrl(_firebaseUrl.value)}/telemetry.json"
+                    val cloudJson = fetchJson(cloudUrl, timeoutMs = 3500)
+                    if (cloudJson != null && cloudJson != "null" && cloudJson.contains("bank")) {
+                        statusJson = cloudJson
+                        usedCloud = true
+                    }
+                }
+
                 if (statusJson != null) {
                     consecutiveFailures = 0
                     parseAndDispatch(statusJson)
                     _isGatewayConnected.value = true
-                    fetchAndDispatchHistory()
+                    _connectionMode.value = if (usedCloud) GatewayConnectionMode.FIREBASE_CLOUD else GatewayConnectionMode.LOCAL_WIFI
+                    fetchAndDispatchHistory(usedCloud)
                     true
                 } else {
                     handleGatewayFailure()
@@ -81,31 +122,50 @@ class Esp32GatewayClient(
             var pollCount = 0
             while (isActive) {
                 try {
-                    val statusJson = fetchJson("http://${_gatewayIp.value}/api/status")
+                    var usedCloud = false
+                    // 1. First attempt local Wi-Fi gateway (192.168.31.111) with short timeout (1200ms)
+                    var statusJson = fetchJson("http://${_gatewayIp.value}/api/status", timeoutMs = 1200)
+
+                    // 2. If local Wi-Fi unreachable (e.g. outside on cellular data), fallback to Firebase Realtime Database
+                    if (statusJson == null && _firebaseUrl.value.isNotBlank()) {
+                        val cloudUrl = "${cleanFirebaseUrl(_firebaseUrl.value)}/telemetry.json"
+                        val cloudJson = fetchJson(cloudUrl, timeoutMs = 3000)
+                        if (cloudJson != null && cloudJson != "null" && cloudJson.contains("bank")) {
+                            statusJson = cloudJson
+                            usedCloud = true
+                        }
+                    }
+
                     if (statusJson != null) {
                         consecutiveFailures = 0
                         parseAndDispatch(statusJson)
                         _isGatewayConnected.value = true
+                        _connectionMode.value = if (usedCloud) GatewayConnectionMode.FIREBASE_CLOUD else GatewayConnectionMode.LOCAL_WIFI
+
+                        pollCount++
+                        if (pollCount % 15 == 1) {
+                            fetchAndDispatchHistory(usedCloud)
+                        }
                     } else {
                         handleGatewayFailure()
-                    }
-
-                    pollCount++
-                    if (pollCount % 20 == 1 && _isGatewayConnected.value) {
-                        fetchAndDispatchHistory()
                     }
                 } catch (e: Exception) {
                     handleGatewayFailure()
                 }
-                delay(1200) // Poll every 1.2 seconds
+                delay(1500) // Poll every 1.5 seconds
             }
         }
     }
 
-    private fun fetchAndDispatchHistory() {
+    private fun fetchAndDispatchHistory(isCloud: Boolean = false) {
         try {
-            val histJson = fetchJson("http://${_gatewayIp.value}/api/history")
-            if (histJson != null) {
+            val histUrl = if (isCloud) {
+                "${cleanFirebaseUrl(_firebaseUrl.value)}/history.json"
+            } else {
+                "http://${_gatewayIp.value}/api/history"
+            }
+            val histJson = fetchJson(histUrl, timeoutMs = 3000)
+            if (histJson != null && histJson != "null") {
                 val hRoot = JSONObject(histJson)
                 val yObj = hRoot.optJSONObject("yesterday")
                 if (yObj != null) {
@@ -134,6 +194,7 @@ class Esp32GatewayClient(
         consecutiveFailures++
         if (consecutiveFailures >= 2) {
             _isGatewayConnected.value = false
+            _connectionMode.value = GatewayConnectionMode.OFFLINE
             // Mark both BMS slots as DISCONNECTED with 0 current and 0 power so UI updates to OFFLINE
             val offlineB1 = (lastB1 ?: BmsData(id = "B1", displayName = "48V 100Ah #1")).copy(
                 connectionStatus = ConnectionStatus.DISCONNECTED,
@@ -319,13 +380,13 @@ class Esp32GatewayClient(
         }
     }
 
-    private fun fetchJson(urlString: String): String? {
+    private fun fetchJson(urlString: String, timeoutMs: Int = 1500): String? {
         var conn: HttpURLConnection? = null
         return try {
             val url = URL(urlString)
             conn = url.openConnection() as HttpURLConnection
-            conn.connectTimeout = 1500
-            conn.readTimeout = 1500
+            conn.connectTimeout = timeoutMs
+            conn.readTimeout = timeoutMs
             if (conn.responseCode == 200) {
                 BufferedReader(InputStreamReader(conn.inputStream)).use { it.readText() }
             } else {

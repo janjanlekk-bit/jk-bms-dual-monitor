@@ -22,3 +22,7 @@
 // WiFi AP Setup Portal Name
 #define AP_SETUP_SSID "JK-BMS-SETUP"
 #define AP_SETUP_PASS "" // Open AP for easy initial setup
+
+// Firebase Realtime Database
+#define FIREBASE_HOST "https://jkbms-monitor-963f7-default-rtdb.asia-southeast1.firebasedatabase.app"
+#define FIREBASE_AUTH "5VfH1ajdcxr3ohBzIc8pyT13wycrsBN6yzKdT6k0"

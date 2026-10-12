@@ -32,6 +32,7 @@ import com.jkbms.dualmonitor.model.ConnectionStatus
 import com.jkbms.dualmonitor.model.DailyEnergyRecord
 import com.jkbms.dualmonitor.model.TotalBankData
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import com.jkbms.dualmonitor.network.GatewayConnectionMode
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -53,8 +54,12 @@ fun DashboardScreen(
     val blePaused by manager.blePaused.collectAsState()
     val bleRemainingSec by manager.bleRemainingSec.collectAsState()
     val isGatewayConnected by manager.isGatewayMode.collectAsState()
+    val connectionMode by manager.gatewayClient.connectionMode.collectAsState()
+    val gatewayIp by manager.gatewayClient.gatewayIp.collectAsState()
+    val firebaseUrl by manager.gatewayClient.firebaseUrl.collectAsState()
 
     var showHistoryDialog by remember { mutableStateOf(false) }
+    var showGatewaySettingsDialog by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
 
@@ -82,21 +87,44 @@ fun DashboardScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
+            Column(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { showGatewaySettingsDialog = true }
+                    .padding(vertical = 4.dp)
+            ) {
                 Text("JK DUAL MONITOR", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Box(
                         modifier = Modifier
                             .size(7.dp)
-                            .background(if (isGatewayConnected) Color(0xFF00E676) else Color(0xFFFF5252), CircleShape)
+                            .background(
+                                when (connectionMode) {
+                                    GatewayConnectionMode.LOCAL_WIFI -> Color(0xFF00E676)
+                                    GatewayConnectionMode.FIREBASE_CLOUD -> Color(0xFF29B6F6)
+                                    GatewayConnectionMode.OFFLINE -> Color(0xFFFF5252)
+                                },
+                                CircleShape
+                            )
                     )
                     Text(
-                        text = if (isGatewayConnected) "ESP32 WI-FI GATEWAY (192.168.31.111)" else "ESP32 GATEWAY OFFLINE (UNREACHABLE)",
+                        text = when (connectionMode) {
+                            GatewayConnectionMode.LOCAL_WIFI -> "ESP32 WI-FI GATEWAY (LOCAL)"
+                            GatewayConnectionMode.FIREBASE_CLOUD -> "ESP32 CLOUD ONLINE (FIREBASE)"
+                            GatewayConnectionMode.OFFLINE -> "ESP32 GATEWAY OFFLINE (UNREACHABLE)"
+                        },
                         style = MaterialTheme.typography.labelSmall,
-                        color = if (isGatewayConnected) Color(0xFF00E676) else Color(0xFFFF5252),
+                        color = when (connectionMode) {
+                            GatewayConnectionMode.LOCAL_WIFI -> Color(0xFF00E676)
+                            GatewayConnectionMode.FIREBASE_CLOUD -> Color(0xFF29B6F6)
+                            GatewayConnectionMode.OFFLINE -> Color(0xFFFF5252)
+                        },
                         fontWeight = FontWeight.Bold
                     )
                 }
+            }
+            IconButton(onClick = { showGatewaySettingsDialog = true }) {
+                Text("⚙️", fontSize = 18.sp)
             }
         }
 
@@ -133,19 +161,23 @@ fun DashboardScreen(
 
         // ESP32 Wi-Fi Gateway Card & Bluetooth Release Control placed at the VERY BOTTOM
         Card(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showGatewaySettingsDialog = true },
             colors = CardDefaults.cardColors(
                 containerColor = when {
-                    !isGatewayConnected -> Color(0xFF2E1A1A)
+                    connectionMode == GatewayConnectionMode.OFFLINE -> Color(0xFF2E1A1A)
                     blePaused -> Color(0xFF3E2723)
+                    connectionMode == GatewayConnectionMode.FIREBASE_CLOUD -> Color(0xFF0F1E2E)
                     else -> Color(0xFF14241A)
                 }
             ),
             border = BorderStroke(
                 1.dp,
                 when {
-                    !isGatewayConnected -> Color(0xFFFF5252).copy(alpha = 0.5f)
+                    connectionMode == GatewayConnectionMode.OFFLINE -> Color(0xFFFF5252).copy(alpha = 0.5f)
                     blePaused -> Color(0xFFFF5722)
+                    connectionMode == GatewayConnectionMode.FIREBASE_CLOUD -> Color(0xFF29B6F6).copy(alpha = 0.5f)
                     else -> Color(0xFF00E676).copy(alpha = 0.3f)
                 }
             )
@@ -160,8 +192,9 @@ fun DashboardScreen(
                         Box(
                             modifier = Modifier.size(8.dp).background(
                                 when {
-                                    !isGatewayConnected -> Color(0xFFFF5252)
+                                    connectionMode == GatewayConnectionMode.OFFLINE -> Color(0xFFFF5252)
                                     blePaused -> Color(0xFFFF5722)
+                                    connectionMode == GatewayConnectionMode.FIREBASE_CLOUD -> Color(0xFF29B6F6)
                                     else -> Color(0xFF00E676)
                                 },
                                 CircleShape
@@ -169,24 +202,27 @@ fun DashboardScreen(
                         )
                         Text(
                             text = when {
-                                !isGatewayConnected -> "ESP32 GATEWAY OFFLINE"
+                                connectionMode == GatewayConnectionMode.OFFLINE -> "ESP32 GATEWAY OFFLINE"
                                 blePaused -> "BLE RELEASED (${bleRemainingSec / 60}:${String.format("%02d", bleRemainingSec % 60)})"
+                                connectionMode == GatewayConnectionMode.FIREBASE_CLOUD -> "ESP32 CLOUD SYNCED (FIREBASE)"
                                 else -> "ESP32 AUTONOMOUS GATEWAY"
                             },
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = when {
-                                !isGatewayConnected -> Color(0xFFFF8A80)
+                                connectionMode == GatewayConnectionMode.OFFLINE -> Color(0xFFFF8A80)
                                 blePaused -> Color(0xFFFFAB91)
+                                connectionMode == GatewayConnectionMode.FIREBASE_CLOUD -> Color(0xFF81D4FA)
                                 else -> Color(0xFFA5D6A7)
                             }
                         )
                     }
                     Text(
                         text = when {
-                            !isGatewayConnected -> "Unreachable over Wi-Fi • Check ESP32 power"
+                            connectionMode == GatewayConnectionMode.OFFLINE -> "Unreachable over Wi-Fi • Check ESP32 power"
                             blePaused -> "Official JK app can connect now"
-                            else -> "24/7 Logging Active • Wi-Fi Gateway Mode"
+                            connectionMode == GatewayConnectionMode.FIREBASE_CLOUD -> "Remote Monitoring Active • Firebase RTDB"
+                            else -> "24/7 Logging Active • Local Wi-Fi Mode"
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.LightGray
@@ -201,7 +237,7 @@ fun DashboardScreen(
                     ) {
                         Text("RESUME", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                     }
-                } else if (isGatewayConnected) {
+                } else if (connectionMode == GatewayConnectionMode.LOCAL_WIFI) {
                     OutlinedButton(
                         onClick = { manager.releaseBle(600) },
                         shape = RoundedCornerShape(6.dp),
@@ -223,6 +259,19 @@ fun DashboardScreen(
             todayRecord = todayEnergy,
             bank = bank,
             onDismiss = { showHistoryDialog = false }
+        )
+    }
+
+    if (showGatewaySettingsDialog) {
+        GatewaySettingsDialog(
+            currentIp = gatewayIp,
+            currentFirebaseUrl = firebaseUrl,
+            connectionMode = connectionMode,
+            onSave = { newIp, newFirebaseUrl ->
+                manager.gatewayClient.setGatewayIp(newIp)
+                manager.gatewayClient.setFirebaseUrl(newFirebaseUrl)
+            },
+            onDismiss = { showGatewaySettingsDialog = false }
         )
     }
 }
@@ -1341,5 +1390,94 @@ fun CellCard(cell: CellData, isMin: Boolean, isMax: Boolean) {
             }
         }
     }
+}
+
+@Composable
+fun GatewaySettingsDialog(
+    currentIp: String,
+    currentFirebaseUrl: String,
+    connectionMode: GatewayConnectionMode,
+    onSave: (ip: String, firebaseUrl: String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var ipText by remember { mutableStateOf(currentIp) }
+    var firebaseUrlText by remember { mutableStateOf(currentFirebaseUrl) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("Gateway & Cloud Settings", fontWeight = FontWeight.Bold, color = Color.White)
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                // Live Connection Status
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .background(
+                                when (connectionMode) {
+                                    GatewayConnectionMode.LOCAL_WIFI -> Color(0xFF00E676)
+                                    GatewayConnectionMode.FIREBASE_CLOUD -> Color(0xFF29B6F6)
+                                    GatewayConnectionMode.OFFLINE -> Color(0xFFFF5252)
+                                },
+                                CircleShape
+                            )
+                    )
+                    Text(
+                        text = when (connectionMode) {
+                            GatewayConnectionMode.LOCAL_WIFI -> "Connected: Local Wi-Fi"
+                            GatewayConnectionMode.FIREBASE_CLOUD -> "Connected: Firebase Cloud"
+                            GatewayConnectionMode.OFFLINE -> "Status: Offline / Unreachable"
+                        },
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.LightGray,
+                        fontSize = 13.sp
+                    )
+                }
+
+                OutlinedTextField(
+                    value = ipText,
+                    onValueChange = { ipText = it },
+                    label = { Text("ESP32 Local Gateway IP") },
+                    placeholder = { Text("192.168.31.111") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = firebaseUrlText,
+                    onValueChange = { firebaseUrlText = it },
+                    label = { Text("Firebase Database URL") },
+                    placeholder = { Text("https://...firebasedatabase.app") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Text(
+                    text = "• Uses Local Wi-Fi when at home for instant zero-latency updates.\n• Automatically switches to Firebase Cloud when outside on mobile data.",
+                    fontSize = 11.sp,
+                    color = Color.Gray
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onSave(ipText, firebaseUrlText)
+                    onDismiss()
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676))
+            ) {
+                Text("SAVE", color = Color.Black, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("CANCEL", color = Color.LightGray)
+            }
+        },
+        containerColor = Color(0xFF1A1F29)
+    )
 }
 
