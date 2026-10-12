@@ -76,20 +76,15 @@ jobs:
           python-version: '3.11'
 
       - name: Install PlatformIO
-        if: success()
-        continue-on-error: true
         run: pip install platformio
 
       - name: Build ESP32 Firmware
         id: build_esp32
-        if: success()
-        continue-on-error: true
         run: |
           cd esp32_firmware
           pio run
 
       - name: Upload ESP32 Firmware Artifact
-        if: steps.build_esp32.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: JK-BMS-ESP32-Firmware

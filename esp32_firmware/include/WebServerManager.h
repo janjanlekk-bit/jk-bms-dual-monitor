@@ -1,5 +1,6 @@
 #pragma once
 #include <Arduino.h>
+#include <functional>
 #include <WebServer.h>
 #include <ArduinoJson.h>
 #include <Update.h>
