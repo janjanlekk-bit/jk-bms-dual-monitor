@@ -51,7 +51,14 @@ public:
 
         server.on("/api/ble/resume", HTTP_POST, [this]() {
             ble->resumeBle();
+            ble->forceReconnect();
             server.send(200, "application/json", "{\"status\":\"ok\",\"paused\":false}");
+        });
+
+        server.on("/api/reboot", HTTP_POST, [this]() {
+            server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Rebooting ESP32 Gateway...\"}");
+            delay(500);
+            ESP.restart();
         });
 
         // Over-The-Air (OTA) firmware update web interface
@@ -216,10 +223,15 @@ public:
         JsonObject bleObj = doc["ble"].to<JsonObject>();
         bleObj["paused"] = ble->isBlePaused();
         bleObj["remainingSec"] = ble->getBlePauseRemainingSec();
+        bleObj["offlineSec"] = ble->getOfflineSec();
         bleObj["b1AddrType"] = ble->addr1.getType() == BLE_ADDR_RANDOM ? "RANDOM" : "PUBLIC";
         bleObj["b2AddrType"] = ble->addr2.getType() == BLE_ADDR_RANDOM ? "RANDOM" : "PUBLIC";
         bleObj["b2Attempts"] = ble->b2TotalAttempts;
         bleObj["b2LastStatus"] = ble->b2LastStatus;
+
+        time_t nowSec = time(nullptr);
+        doc["timestamp"] = (uint32_t)nowSec;
+        doc["uptime"] = (uint32_t)(millis() / 1000UL);
 
         String json;
         serializeJson(doc, json);

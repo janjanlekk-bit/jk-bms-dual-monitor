@@ -38,6 +38,12 @@ class Esp32GatewayClient(
     )
     val firebaseUrl = _firebaseUrl.asStateFlow()
 
+    private val _firebaseAuth = MutableStateFlow(
+        prefs.getString("firebase_auth", "5VfH1ajdcxr3ohBzIc8pyT13wycrsBN6yzKdT6k0")
+            ?: "5VfH1ajdcxr3ohBzIc8pyT13wycrsBN6yzKdT6k0"
+    )
+    val firebaseAuth = _firebaseAuth.asStateFlow()
+
     private val _connectionMode = MutableStateFlow(GatewayConnectionMode.OFFLINE)
     val connectionMode = _connectionMode.asStateFlow()
 
@@ -49,6 +55,15 @@ class Esp32GatewayClient(
 
     private val _bleRemainingSec = MutableStateFlow(0)
     val bleRemainingSec = _bleRemainingSec.asStateFlow()
+
+    private val _telemetryTimestamp = MutableStateFlow(0L)
+    val telemetryTimestamp = _telemetryTimestamp.asStateFlow()
+
+    private val _uptimeSec = MutableStateFlow(0L)
+    val uptimeSec = _uptimeSec.asStateFlow()
+
+    private val _watchdogOfflineSec = MutableStateFlow(0)
+    val watchdogOfflineSec = _watchdogOfflineSec.asStateFlow()
 
     private var pollJob: Job? = null
     private var lastB1: BmsData? = null
@@ -75,6 +90,12 @@ class Esp32GatewayClient(
             _firebaseUrl.value = clean
             prefs.edit().putString("firebase_url", clean).apply()
         }
+    }
+
+    fun setFirebaseAuth(auth: String) {
+        val clean = auth.trim()
+        _firebaseAuth.value = clean
+        prefs.edit().putString("firebase_auth", clean).apply()
     }
 
     private fun cleanFirebaseUrl(url: String): String {
@@ -274,14 +295,20 @@ class Esp32GatewayClient(
             BmsData(id = "B2", displayName = "48V 100Ah #2")
         }
 
-        // 4. BLE pause status
+        // 4. Timestamp & Watchdog info
+        _telemetryTimestamp.value = root.optLong("timestamp", 0L)
+        _uptimeSec.value = root.optLong("uptime", 0L)
+
+        // 5. BLE pause & watchdog status
         val bleObj = root.optJSONObject("ble")
         if (bleObj != null) {
             _blePaused.value = bleObj.optBoolean("paused", false)
             _bleRemainingSec.value = bleObj.optInt("remainingSec", 0)
+            _watchdogOfflineSec.value = bleObj.optInt("offlineSec", 0)
         } else {
             _blePaused.value = false
             _bleRemainingSec.value = 0
+            _watchdogOfflineSec.value = 0
         }
 
         lastB1 = b1Data
@@ -354,29 +381,102 @@ class Esp32GatewayClient(
         )
     }
 
-    suspend fun releaseBle(seconds: Int = 600): Boolean = withContext(Dispatchers.IO) {
+    suspend fun sendFirebaseCommand(action: String, extraJson: String = ""): Boolean = withContext(Dispatchers.IO) {
+        var conn: HttpURLConnection? = null
         try {
-            val url = URL("http://${_gatewayIp.value}/api/ble/release?sec=$seconds")
-            val conn = url.openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.connectTimeout = 3000
-            conn.readTimeout = 3000
-            conn.responseCode == 200
+            val authParam = if (_firebaseAuth.value.isNotBlank()) "?auth=${_firebaseAuth.value}" else ""
+            val urlStr = "${cleanFirebaseUrl(_firebaseUrl.value)}/command.json$authParam"
+            val url = URL(urlStr)
+            conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "PUT"
+            conn.doOutput = true
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.connectTimeout = 4000
+            conn.readTimeout = 4000
+
+            val payload = if (extraJson.isNotBlank()) {
+                """{"action":"$action","timestamp":${System.currentTimeMillis()},$extraJson}"""
+            } else {
+                """{"action":"$action","timestamp":${System.currentTimeMillis()}}"""
+            }
+            conn.outputStream.use { os ->
+                os.write(payload.toByteArray(Charsets.UTF_8))
+            }
+            val code = conn.responseCode
+            code in 200..299
         } catch (e: Exception) {
+            Log.e("Esp32GatewayClient", "Failed to send Firebase command: $action", e)
             false
+        } finally {
+            conn?.disconnect()
+        }
+    }
+
+    suspend fun rebootGateway(): Boolean = withContext(Dispatchers.IO) {
+        if (_connectionMode.value == GatewayConnectionMode.FIREBASE_CLOUD) {
+            sendFirebaseCommand("reboot")
+        } else {
+            try {
+                val url = URL("http://${_gatewayIp.value}/api/reboot")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.connectTimeout = 3000
+                conn.readTimeout = 3000
+                if (conn.responseCode == 200) true else sendFirebaseCommand("reboot")
+            } catch (e: Exception) {
+                sendFirebaseCommand("reboot")
+            }
+        }
+    }
+
+    suspend fun forceReconnectBle(): Boolean = withContext(Dispatchers.IO) {
+        if (_connectionMode.value == GatewayConnectionMode.FIREBASE_CLOUD) {
+            sendFirebaseCommand("reconnect_ble")
+        } else {
+            try {
+                val url = URL("http://${_gatewayIp.value}/api/ble/resume")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.connectTimeout = 3000
+                conn.readTimeout = 3000
+                if (conn.responseCode == 200) true else sendFirebaseCommand("reconnect_ble")
+            } catch (e: Exception) {
+                sendFirebaseCommand("reconnect_ble")
+            }
+        }
+    }
+
+    suspend fun releaseBle(seconds: Int = 600): Boolean = withContext(Dispatchers.IO) {
+        if (_connectionMode.value == GatewayConnectionMode.FIREBASE_CLOUD) {
+            sendFirebaseCommand("pause_ble", """"sec":$seconds""")
+        } else {
+            try {
+                val url = URL("http://${_gatewayIp.value}/api/ble/release?sec=$seconds")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.connectTimeout = 3000
+                conn.readTimeout = 3000
+                if (conn.responseCode == 200) true else sendFirebaseCommand("pause_ble", """"sec":$seconds""")
+            } catch (e: Exception) {
+                sendFirebaseCommand("pause_ble", """"sec":$seconds""")
+            }
         }
     }
 
     suspend fun resumeBle(): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val url = URL("http://${_gatewayIp.value}/api/ble/resume")
-            val conn = url.openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.connectTimeout = 3000
-            conn.readTimeout = 3000
-            conn.responseCode == 200
-        } catch (e: Exception) {
-            false
+        if (_connectionMode.value == GatewayConnectionMode.FIREBASE_CLOUD) {
+            sendFirebaseCommand("resume_ble")
+        } else {
+            try {
+                val url = URL("http://${_gatewayIp.value}/api/ble/resume")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.connectTimeout = 3000
+                conn.readTimeout = 3000
+                if (conn.responseCode == 200) true else sendFirebaseCommand("resume_ble")
+            } catch (e: Exception) {
+                sendFirebaseCommand("resume_ble")
+            }
         }
     }
 

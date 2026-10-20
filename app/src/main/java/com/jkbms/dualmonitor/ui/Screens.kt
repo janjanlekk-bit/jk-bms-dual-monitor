@@ -57,9 +57,13 @@ fun DashboardScreen(
     val connectionMode by manager.gatewayClient.connectionMode.collectAsState()
     val gatewayIp by manager.gatewayClient.gatewayIp.collectAsState()
     val firebaseUrl by manager.gatewayClient.firebaseUrl.collectAsState()
+    val firebaseAuth by manager.gatewayClient.firebaseAuth.collectAsState()
+    val telemetryTimestamp by manager.telemetryTimestamp.collectAsState()
+    val watchdogOfflineSec by manager.watchdogOfflineSec.collectAsState()
 
     var showHistoryDialog by remember { mutableStateOf(false) }
     var showGatewaySettingsDialog by remember { mutableStateOf(false) }
+    var showRebootConfirmDialog by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
 
@@ -140,6 +144,99 @@ fun DashboardScreen(
             ) {
                 StatusBadge(label = "BATTERY 1", status = b1.connectionStatus)
                 StatusBadge(label = "BATTERY 2", status = b2.connectionStatus)
+            }
+        }
+
+        // Auto-Heal & Cloud Recovery Card when batteries are offline
+        val bothBatteriesOffline = b1.connectionStatus != ConnectionStatus.CONNECTED && b2.connectionStatus != ConnectionStatus.CONNECTED
+        if (bothBatteriesOffline && connectionMode != GatewayConnectionMode.OFFLINE) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF251515)),
+                border = BorderStroke(1.dp, Color(0xFFFF5252).copy(alpha = 0.6f)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("⚠️", fontSize = 14.sp)
+                        Text(
+                            text = if (watchdogOfflineSec > 0) {
+                                "Batteries Offline (${watchdogOfflineSec}s / 180s Auto-Heal)"
+                            } else {
+                                "Batteries Offline • Auto-Heal Active"
+                            },
+                            color = Color(0xFFFF8A80),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        )
+                    }
+                    Text(
+                        text = "Bluetooth link to the JK BMS dropped. The gateway will auto-reboot after 3 minutes offline, or you can trigger an instant cloud recovery below:",
+                        color = Color.LightGray,
+                        fontSize = 11.sp
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = { manager.forceReconnectBle() },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0288D1)),
+                            shape = RoundedCornerShape(6.dp),
+                            contentPadding = PaddingValues(vertical = 8.dp)
+                        ) {
+                            Text("⚡ RECONNECT BLE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                        Button(
+                            onClick = { showRebootConfirmDialog = true },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
+                            shape = RoundedCornerShape(6.dp),
+                            contentPadding = PaddingValues(vertical = 8.dp)
+                        ) {
+                            Text("🔄 REBOOT ESP32", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Stale Cloud Data Warning
+        val nowSec = System.currentTimeMillis() / 1000
+        val isCloudMode = connectionMode == GatewayConnectionMode.FIREBASE_CLOUD
+        val telemetryAgeSec = if (telemetryTimestamp > 0) (nowSec - telemetryTimestamp).coerceAtLeast(0) else 0L
+        if (isCloudMode && telemetryAgeSec > 35) {
+            val ageText = when {
+                telemetryAgeSec < 60 -> "${telemetryAgeSec}s ago"
+                telemetryAgeSec < 3600 -> "${telemetryAgeSec / 60}m ago"
+                telemetryAgeSec < 86400 -> "${telemetryAgeSec / 3600}h ago"
+                else -> "${telemetryAgeSec / 86400}d ago"
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF332005), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "⚠️ Stale cloud telemetry (from $ageText)",
+                    color = Color(0xFFFFB74D),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = "REBOOT GATEWAY",
+                    color = Color(0xFF4FC3F7),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable { showRebootConfirmDialog = true }
+                )
             }
         }
 
@@ -237,7 +334,7 @@ fun DashboardScreen(
                     ) {
                         Text("RESUME", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                     }
-                } else if (connectionMode == GatewayConnectionMode.LOCAL_WIFI) {
+                } else if (connectionMode != GatewayConnectionMode.OFFLINE) {
                     OutlinedButton(
                         onClick = { manager.releaseBle(600) },
                         shape = RoundedCornerShape(6.dp),
@@ -266,12 +363,47 @@ fun DashboardScreen(
         GatewaySettingsDialog(
             currentIp = gatewayIp,
             currentFirebaseUrl = firebaseUrl,
+            currentFirebaseAuth = firebaseAuth,
             connectionMode = connectionMode,
-            onSave = { newIp, newFirebaseUrl ->
+            onForceReconnect = {
+                manager.forceReconnectBle()
+                showGatewaySettingsDialog = false
+            },
+            onReboot = {
+                showGatewaySettingsDialog = false
+                showRebootConfirmDialog = true
+            },
+            onSave = { newIp, newFirebaseUrl, newFirebaseAuth ->
                 manager.gatewayClient.setGatewayIp(newIp)
                 manager.gatewayClient.setFirebaseUrl(newFirebaseUrl)
+                manager.gatewayClient.setFirebaseAuth(newFirebaseAuth)
             },
             onDismiss = { showGatewaySettingsDialog = false }
+        )
+    }
+
+    if (showRebootConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showRebootConfirmDialog = false },
+            title = { Text("Reboot ESP32 Gateway?", color = Color.White, fontWeight = FontWeight.Bold) },
+            text = { Text("This sends a reboot command to the ESP32. It will restart cleanly and reconnect to Wi-Fi and Bluetooth automatically within 10 seconds.", color = Color.LightGray) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        manager.rebootGateway()
+                        showRebootConfirmDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))
+                ) {
+                    Text("REBOOT NOW", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRebootConfirmDialog = false }) {
+                    Text("CANCEL", color = Color.LightGray)
+                }
+            },
+            containerColor = Color(0xFF1E232E)
         )
     }
 }
@@ -1396,12 +1528,16 @@ fun CellCard(cell: CellData, isMin: Boolean, isMax: Boolean) {
 fun GatewaySettingsDialog(
     currentIp: String,
     currentFirebaseUrl: String,
+    currentFirebaseAuth: String,
     connectionMode: GatewayConnectionMode,
-    onSave: (ip: String, firebaseUrl: String) -> Unit,
+    onForceReconnect: () -> Unit,
+    onReboot: () -> Unit,
+    onSave: (ip: String, firebaseUrl: String, firebaseAuth: String) -> Unit,
     onDismiss: () -> Unit
 ) {
     var ipText by remember { mutableStateOf(currentIp) }
     var firebaseUrlText by remember { mutableStateOf(currentFirebaseUrl) }
+    var firebaseAuthText by remember { mutableStateOf(currentFirebaseAuth) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1454,6 +1590,38 @@ fun GatewaySettingsDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                OutlinedTextField(
+                    value = firebaseAuthText,
+                    onValueChange = { firebaseAuthText = it },
+                    label = { Text("Firebase Auth Secret (Optional)") },
+                    placeholder = { Text("Database secret key") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Quick Cloud / Local Gateway Action Controls
+                Text("Remote Controls", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 12.sp)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = onForceReconnect,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0288D1)),
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(vertical = 6.dp)
+                    ) {
+                        Text("⚡ RECONNECT BLE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                    Button(
+                        onClick = onReboot,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(vertical = 6.dp)
+                    ) {
+                        Text("🔄 REBOOT ESP32", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
+
                 Text(
                     text = "• Uses Local Wi-Fi when at home for instant zero-latency updates.\n• Automatically switches to Firebase Cloud when outside on mobile data.",
                     fontSize = 11.sp,
@@ -1464,7 +1632,7 @@ fun GatewaySettingsDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    onSave(ipText, firebaseUrlText)
+                    onSave(ipText, firebaseUrlText, firebaseAuthText)
                     onDismiss()
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676))

@@ -3,6 +3,7 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
+#include <ArduinoJson.h>
 #include "Config.h"
 #include "WebServerManager.h"
 
@@ -14,13 +15,14 @@ public:
     bool isSyncPaused = false;
 
     WiFiClientSecure client;
-    HTTPClient httpTelemetry;
-    HTTPClient httpHistory;
 
     unsigned long lastTelemetrySyncMs = 0;
     unsigned long lastHistorySyncMs = 0;
+    unsigned long lastCommandCheckMs = 0;
+
     const unsigned long telemetryIntervalMs = 3000; // 3 seconds interval for live data
     const unsigned long historyIntervalMs = 60000;  // 60 seconds interval for daily history
+    const unsigned long commandIntervalMs = 4000;  // 4 seconds interval to poll cloud commands
 
     WebServerManager* webServer = nullptr;
 
@@ -33,12 +35,6 @@ public:
 
         client.setInsecure();
         client.setTimeout(3000);
-
-        httpTelemetry.setReuse(true);
-        httpTelemetry.setTimeout(3000);
-
-        httpHistory.setReuse(true);
-        httpHistory.setTimeout(3000);
 
         // Register OTA callbacks to cleanly stop HTTPS operations before flash write
         if (webServer) {
@@ -53,8 +49,6 @@ public:
 
     void pauseSync() {
         isSyncPaused = true;
-        httpTelemetry.end();
-        httpHistory.end();
         Serial.println("[FIREBASE] Sync paused for OTA");
     }
 
@@ -68,23 +62,28 @@ public:
             return;
         }
 
-        // Avoid syncing if BLE is explicitly paused/released
-        if (webServer && webServer->ble && webServer->ble->isBlePaused()) {
-            return;
-        }
-
         unsigned long now = millis();
 
-        // 1. Live telemetry push (every 3 seconds)
+        // 1. Live telemetry push (every 3 seconds, skip if BLE paused by user)
         if (now - lastTelemetrySyncMs >= telemetryIntervalMs) {
             lastTelemetrySyncMs = now;
-            syncTelemetry();
+            if (!(webServer && webServer->ble && webServer->ble->isBlePaused())) {
+                syncTelemetry();
+            }
         }
 
-        // 2. Daily history push (every 60 seconds)
+        // 2. Remote cloud commands check (every 4 seconds, ALWAYS checked even if BLE paused)
+        if (now - lastCommandCheckMs >= commandIntervalMs) {
+            lastCommandCheckMs = now;
+            checkCommands();
+        }
+
+        // 3. Daily history push (every 60 seconds)
         if (now - lastHistorySyncMs >= historyIntervalMs) {
             lastHistorySyncMs = now;
-            syncHistory();
+            if (!(webServer && webServer->ble && webServer->ble->isBlePaused())) {
+                syncHistory();
+            }
         }
     }
 
@@ -99,15 +98,17 @@ private:
             url += "?auth=" + auth;
         }
 
-        if (httpTelemetry.begin(client, url)) {
-            httpTelemetry.addHeader("Content-Type", "application/json");
-            int httpCode = httpTelemetry.PUT(json);
+        HTTPClient http;
+        http.setTimeout(3000);
+        if (http.begin(client, url)) {
+            http.addHeader("Content-Type", "application/json");
+            int httpCode = http.PUT(json);
             if (httpCode > 0) {
-                // Success
+                http.getString(); // drain response body
             } else {
-                Serial.printf("[FIREBASE] Telemetry PUT error: %s\n", httpTelemetry.errorToString(httpCode).c_str());
-                httpTelemetry.end();
+                Serial.printf("[FIREBASE] Telemetry PUT error: %s\n", http.errorToString(httpCode).c_str());
             }
+            http.end();
         }
     }
 
@@ -121,13 +122,93 @@ private:
             url += "?auth=" + auth;
         }
 
-        if (httpHistory.begin(client, url)) {
-            httpHistory.addHeader("Content-Type", "application/json");
-            int httpCode = httpHistory.PUT(json);
-            if (httpCode <= 0) {
-                Serial.printf("[FIREBASE] History PUT error: %s\n", httpHistory.errorToString(httpCode).c_str());
-                httpHistory.end();
+        HTTPClient http;
+        http.setTimeout(3000);
+        if (http.begin(client, url)) {
+            http.addHeader("Content-Type", "application/json");
+            int httpCode = http.PUT(json);
+            if (httpCode > 0) {
+                http.getString(); // drain response body
+            } else {
+                Serial.printf("[FIREBASE] History PUT error: %s\n", http.errorToString(httpCode).c_str());
             }
+            http.end();
+        }
+    }
+
+    void checkCommands() {
+        if (!webServer || !webServer->ble) return;
+
+        String url = host + "/command.json";
+        if (auth.length() > 0) {
+            url += "?auth=" + auth;
+        }
+
+        HTTPClient http;
+        http.setTimeout(3000);
+        if (http.begin(client, url)) {
+            int httpCode = http.GET();
+            if (httpCode == 200) {
+                String payload = http.getString();
+                if (payload.length() > 0 && payload != "null") {
+                    handleCommand(payload);
+                }
+            }
+            http.end();
+        }
+    }
+
+    void handleCommand(const String& payload) {
+        JsonDocument doc;
+        DeserializationError err = deserializeJson(doc, payload);
+        if (err) return;
+
+        const char* action = doc["action"];
+        if (!action || strlen(action) == 0) return;
+
+        Serial.printf("[FIREBASE] Cloud command received: %s\n", action);
+
+        // Always clear the command in Firebase first to prevent duplicate execution
+        clearCommand();
+
+        if (strcmp(action, "reboot") == 0) {
+            Serial.println("[FIREBASE] Remote reboot command accepted! Restarting ESP32 in 500ms...");
+            delay(500);
+            ESP.restart();
+        } else if (strcmp(action, "reconnect_ble") == 0) {
+            Serial.println("[FIREBASE] Remote reconnect_ble command accepted! Forcing BLE reset...");
+            if (webServer && webServer->ble) {
+                webServer->ble->resumeBle();
+                webServer->ble->forceReconnect();
+            }
+        } else if (strcmp(action, "pause_ble") == 0) {
+            int sec = doc["sec"] | 600;
+            Serial.printf("[FIREBASE] Remote pause_ble command accepted (%d sec)!\n", sec);
+            if (webServer && webServer->ble) {
+                webServer->ble->pauseBle(sec);
+            }
+        } else if (strcmp(action, "resume_ble") == 0) {
+            Serial.println("[FIREBASE] Remote resume_ble command accepted!");
+            if (webServer && webServer->ble) {
+                webServer->ble->resumeBle();
+                webServer->ble->forceReconnect();
+            }
+        }
+    }
+
+    void clearCommand() {
+        String url = host + "/command.json";
+        if (auth.length() > 0) {
+            url += "?auth=" + auth;
+        }
+
+        HTTPClient http;
+        http.setTimeout(3000);
+        if (http.begin(client, url)) {
+            http.addHeader("Content-Type", "application/json");
+            http.PUT("null");
+            http.getString();
+            http.end();
         }
     }
 };

@@ -118,11 +118,13 @@ public:
     void onDeviceDisconnect(int devIdx) {
         if (devIdx == 1) {
             bms1.isConnected = false;
+            bms1.lastSeenMs = 0;
             chr1 = nullptr;
             assembler1.reset();
             Serial.println("[BLE] B1 disconnected");
         } else {
             bms2.isConnected = false;
+            bms2.lastSeenMs = 0;
             chr2 = nullptr;
             assembler2.reset();
             Serial.println("[BLE] B2 disconnected");
@@ -130,16 +132,33 @@ public:
     }
 
     unsigned long blePausedUntilMs = 0;
+    unsigned long allBatteriesDisconnectedSinceMs = 0;
+    const unsigned long WATCHDOG_OFFLINE_TIMEOUT_MS = 180000; // 3 minutes offline triggers auto-reboot
+    const unsigned long BOOT_GRACE_PERIOD_MS = 90000;         // 90 seconds boot grace period
 
     void pauseBle(uint32_t durationSeconds = 600) {
         blePausedUntilMs = millis() + (durationSeconds * 1000UL);
+        allBatteriesDisconnectedSinceMs = 0;
         disconnectAll();
         Serial.printf("[BLE] Bluetooth released for %u seconds\n", durationSeconds);
     }
 
     void resumeBle() {
         blePausedUntilMs = 0;
+        allBatteriesDisconnectedSinceMs = 0;
         Serial.println("[BLE] Bluetooth resumed!");
+    }
+
+    void forceReconnect() {
+        blePausedUntilMs = 0;
+        allBatteriesDisconnectedSinceMs = 0;
+        disconnectAll();
+        b1FailCount = 0;
+        b2FailCount = 0;
+        lastB1ConnectAttempt = 0;
+        lastB2ConnectAttempt = 0;
+        isConnecting = false;
+        Serial.println("[BLE] Force reconnect requested: connection state reset.");
     }
 
     bool isBlePaused() const {
@@ -151,6 +170,11 @@ public:
         return (uint32_t)((blePausedUntilMs - millis()) / 1000UL);
     }
 
+    uint32_t getOfflineSec() const {
+        if (allBatteriesDisconnectedSinceMs == 0) return 0;
+        return (uint32_t)((millis() - allBatteriesDisconnectedSinceMs) / 1000UL);
+    }
+
     void disconnectAll() {
         if (client1 && client1->isConnected()) {
             client1->disconnect();
@@ -158,37 +182,75 @@ public:
         if (client2 && client2->isConnected()) {
             client2->disconnect();
         }
+        chr1 = nullptr;
+        chr2 = nullptr;
+        assembler1.reset();
+        assembler2.reset();
         bms1.isConnected = false;
         bms2.isConnected = false;
+        bms1.lastSeenMs = 0;
+        bms2.lastSeenMs = 0;
+    }
+
+    void checkOfflineWatchdog(unsigned long now) {
+        if (now < BOOT_GRACE_PERIOD_MS || isBlePaused()) {
+            allBatteriesDisconnectedSinceMs = 0;
+            return;
+        }
+
+        bool b1Alive = bms1.isConnected && (bms1.lastSeenMs > 0) && (now - bms1.lastSeenMs < 25000) && (bms1.voltage > 10.0f);
+        bool b2Alive = bms2.isConnected && (bms2.lastSeenMs > 0) && (now - bms2.lastSeenMs < 25000) && (bms2.voltage > 10.0f);
+
+        if (b1Alive || b2Alive) {
+            allBatteriesDisconnectedSinceMs = 0;
+        } else {
+            if (allBatteriesDisconnectedSinceMs == 0) {
+                allBatteriesDisconnectedSinceMs = now;
+                Serial.println("[WATCHDOG] Both batteries offline. Starting 3-minute auto-heal timer.");
+            } else if (now - allBatteriesDisconnectedSinceMs >= WATCHDOG_OFFLINE_TIMEOUT_MS) {
+                Serial.println("[WATCHDOG] CRITICAL: Both batteries offline for > 3 minutes!");
+                Serial.println("[WATCHDOG] Auto-healing: restarting ESP32 to recover Bluetooth...");
+                delay(500);
+                ESP.restart();
+            }
+        }
     }
 
     void update() {
-        if (isBlePaused()) return;
+        if (isBlePaused()) {
+            allBatteriesDisconnectedSinceMs = 0;
+            return;
+        }
         if (blePausedUntilMs > 0 && millis() >= blePausedUntilMs) {
             blePausedUntilMs = 0;
             Serial.println("[BLE] Pause period expired, resuming auto-connect.");
         }
-        if (isConnecting) return;
+
         unsigned long now = millis();
+
+        // 1. Check auto-heal watchdog
+        checkOfflineWatchdog(now);
+
+        if (isConnecting) return;
 
         bool b1NeedsConn = !client1->isConnected();
         bool b2NeedsConn = !client2->isConnected();
 
-        // 1. Connect to B1 if disconnected (retry every 7s, recording attempt AFTER finish)
+        // 2. Connect to B1 if disconnected (retry every 7s, recording attempt AFTER finish)
         if (b1NeedsConn && (now - lastB1ConnectAttempt > 7000)) {
             connectToDevice(1, addr1);
             lastB1ConnectAttempt = millis();
             return;
         }
 
-        // 2. Connect to B2 if disconnected (retry every 7s, recording attempt AFTER finish)
+        // 3. Connect to B2 if disconnected (retry every 7s, recording attempt AFTER finish)
         if (b2NeedsConn && (now - lastB2ConnectAttempt > 7000)) {
             connectToDevice(2, addr2);
             lastB2ConnectAttempt = millis();
             return;
         }
 
-        // 3. Keepalive and stream watchdog: check every 2.5 seconds
+        // 4. Keepalive and stream watchdog: check every 2.5 seconds
         if (now - lastWatchdogMs >= 2500) {
             lastWatchdogMs = now;
             checkSilentStreams(now);
@@ -202,6 +264,12 @@ public:
         String name = (devIndex == 1) ? "B1" : "B2";
 
         if (devIndex == 1) b1TotalAttempts++; else b2TotalAttempts++;
+
+        // Clean up any stale connection handle before reconnecting
+        if (client->isConnected()) {
+            client->disconnect();
+            delay(50);
+        }
 
         Serial.printf("[BLE] Connecting to %s (%s, type %s)...\n",
                       name.c_str(), targetAddr.toString().c_str(),
@@ -267,27 +335,43 @@ public:
         uint8_t reqCmd[20];
         JkProtocol::buildReadCommand(reqCmd, 0x96);
 
-        if (client1->isConnected() && chr1 != nullptr) {
-            // Keepalive ping if silent for > 5s
-            if (bms1.lastSeenMs > 0 && (now - bms1.lastSeenMs > 5000)) {
-                chr1->writeValue(reqCmd, 20, chr1->canWrite());
-            }
-            // Watchdog stall recovery: if silent for > 20s, force disconnect & reconnect
-            if (bms1.lastSeenMs > 0 && (now - bms1.lastSeenMs > 20000)) {
-                Serial.println("[BLE] B1 stream dead > 20s, restarting connection...");
+        if (client1->isConnected()) {
+            if (chr1 != nullptr) {
+                // Keepalive ping if silent for > 5s
+                if (bms1.lastSeenMs > 0 && (now - bms1.lastSeenMs > 5000)) {
+                    chr1->writeValue(reqCmd, 20, chr1->canWrite());
+                }
+                // Watchdog stall recovery: if silent for > 20s, force disconnect & reconnect
+                if (bms1.lastSeenMs > 0 && (now - bms1.lastSeenMs > 20000)) {
+                    Serial.println("[BLE] B1 stream dead > 20s, restarting connection...");
+                    client1->disconnect();
+                    onDeviceDisconnect(1);
+                }
+            } else {
+                // Zombie connection with null characteristic
+                Serial.println("[BLE] B1 zombie connection detected, forcing disconnect...");
                 client1->disconnect();
+                onDeviceDisconnect(1);
             }
         }
 
-        if (client2->isConnected() && chr2 != nullptr) {
-            // Keepalive ping if silent for > 5s
-            if (bms2.lastSeenMs > 0 && (now - bms2.lastSeenMs > 5000)) {
-                chr2->writeValue(reqCmd, 20, chr2->canWrite());
-            }
-            // Watchdog stall recovery: if silent for > 20s, force disconnect & reconnect
-            if (bms2.lastSeenMs > 0 && (now - bms2.lastSeenMs > 20000)) {
-                Serial.println("[BLE] B2 stream dead > 20s, restarting connection...");
+        if (client2->isConnected()) {
+            if (chr2 != nullptr) {
+                // Keepalive ping if silent for > 5s
+                if (bms2.lastSeenMs > 0 && (now - bms2.lastSeenMs > 5000)) {
+                    chr2->writeValue(reqCmd, 20, chr2->canWrite());
+                }
+                // Watchdog stall recovery: if silent for > 20s, force disconnect & reconnect
+                if (bms2.lastSeenMs > 0 && (now - bms2.lastSeenMs > 20000)) {
+                    Serial.println("[BLE] B2 stream dead > 20s, restarting connection...");
+                    client2->disconnect();
+                    onDeviceDisconnect(2);
+                }
+            } else {
+                // Zombie connection with null characteristic
+                Serial.println("[BLE] B2 zombie connection detected, forcing disconnect...");
                 client2->disconnect();
+                onDeviceDisconnect(2);
             }
         }
     }

@@ -33,6 +33,9 @@ class BmsConnectionManager(context: Context) {
     val isGatewayMode = gatewayClient.isGatewayConnected
     val blePaused = gatewayClient.blePaused
     val bleRemainingSec = gatewayClient.bleRemainingSec
+    val telemetryTimestamp = gatewayClient.telemetryTimestamp
+    val uptimeSec = gatewayClient.uptimeSec
+    val watchdogOfflineSec = gatewayClient.watchdogOfflineSec
 
     val totalBankState: StateFlow<TotalBankData> = combine(bms1.bmsState, bms2.bmsState) { b1, b2 ->
         val activeBmsList = listOf(b1, b2).filter { it.voltage > 1.0f }
@@ -67,6 +70,14 @@ class BmsConnectionManager(context: Context) {
 
     fun resumeBle() {
         scope.launch { gatewayClient.resumeBle() }
+    }
+
+    fun forceReconnectBle() {
+        scope.launch { gatewayClient.forceReconnectBle() }
+    }
+
+    fun rebootGateway() {
+        scope.launch { gatewayClient.rebootGateway() }
     }
 
     suspend fun refreshConnection() {
