@@ -40,6 +40,7 @@ class MainActivity : ComponentActivity() {
                 secondary = Color(0xFF2979FF)
             )) {
                 var selectedBmsSlot by remember { mutableStateOf<String?>(null) }
+                var showHistoryScreen by remember { mutableStateOf(false) }
                 var showExitDialog by remember { mutableStateOf(false) }
 
                 val b1 by manager.bms1.bmsState.collectAsState()
@@ -53,15 +54,20 @@ class MainActivity : ComponentActivity() {
                     selectedBmsSlot = null
                 }
 
-                // 2. If on Page 2 (Energy Flow), back gesture smoothly returns to Page 1 (Telemetry)
-                BackHandler(enabled = selectedBmsSlot == null && pagerState.currentPage == 1) {
+                // 2. If on separate History page, back gesture returns to the main dashboard
+                BackHandler(enabled = selectedBmsSlot == null && showHistoryScreen) {
+                    showHistoryScreen = false
+                }
+
+                // 3. If on Page 2 (Energy Flow), back gesture smoothly returns to Page 1 (Telemetry)
+                BackHandler(enabled = selectedBmsSlot == null && !showHistoryScreen && pagerState.currentPage == 1) {
                     coroutineScope.launch {
                         pagerState.animateScrollToPage(0)
                     }
                 }
 
-                // 3. If on main homescreen (Page 1), back gesture asks if the user wants to exit
-                BackHandler(enabled = selectedBmsSlot == null && pagerState.currentPage == 0 && !showExitDialog) {
+                // 4. If on main homescreen (Page 1), back gesture asks if the user wants to exit
+                BackHandler(enabled = selectedBmsSlot == null && !showHistoryScreen && pagerState.currentPage == 0 && !showExitDialog) {
                     showExitDialog = true
                 }
 
@@ -72,6 +78,11 @@ class MainActivity : ComponentActivity() {
                             b2 = b2,
                             initialSlot = selectedBmsSlot!!,
                             onBack = { selectedBmsSlot = null }
+                        )
+                    } else if (showHistoryScreen) {
+                        EnergyHistoryScreen(
+                            manager = manager,
+                            onBack = { showHistoryScreen = false }
                         )
                     } else {
                         Column(modifier = Modifier.fillMaxSize()) {
@@ -121,7 +132,8 @@ class MainActivity : ComponentActivity() {
                                 when (page) {
                                     0 -> DashboardScreen(
                                         manager = manager,
-                                        onInspectCells = { bms -> selectedBmsSlot = if (bms.id == "B2") "B2" else "B1" }
+                                        onInspectCells = { bms -> selectedBmsSlot = if (bms.id == "B2") "B2" else "B1" },
+                                        onViewHistory = { showHistoryScreen = true }
                                     )
                                     1 -> EnergyFlowScreen(
                                         manager = manager,

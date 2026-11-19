@@ -44,7 +44,8 @@ import java.util.Locale
 @Composable
 fun DashboardScreen(
     manager: BmsConnectionManager,
-    onInspectCells: (BmsData) -> Unit
+    onInspectCells: (BmsData) -> Unit,
+    onViewHistory: () -> Unit = {}
 ) {
     val b1 by manager.bms1.bmsState.collectAsState()
     val b2 by manager.bms2.bmsState.collectAsState()
@@ -61,7 +62,6 @@ fun DashboardScreen(
     val telemetryTimestamp by manager.telemetryTimestamp.collectAsState()
     val watchdogOfflineSec by manager.watchdogOfflineSec.collectAsState()
 
-    var showHistoryDialog by remember { mutableStateOf(false) }
     var showGatewaySettingsDialog by remember { mutableStateOf(false) }
     var showRebootConfirmDialog by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
@@ -127,8 +127,13 @@ fun DashboardScreen(
                     )
                 }
             }
-            IconButton(onClick = { showGatewaySettingsDialog = true }) {
-                Text("⚙️", fontSize = 18.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onViewHistory) {
+                    Text("📜", fontSize = 18.sp)
+                }
+                IconButton(onClick = { showGatewaySettingsDialog = true }) {
+                    Text("⚙️", fontSize = 18.sp)
+                }
             }
         }
 
@@ -246,7 +251,7 @@ fun DashboardScreen(
             record = todayEnergy,
             historyList = historyList,
             bank = bank,
-            onViewHistory = { showHistoryDialog = true }
+            onViewHistory = onViewHistory
         )
 
         CombinedBatteryPacksCard(
@@ -349,15 +354,6 @@ fun DashboardScreen(
         Spacer(modifier = Modifier.height(16.dp))
     }
 }
-
-    if (showHistoryDialog) {
-        EnergyHistoryDialog(
-            historyList = historyList,
-            todayRecord = todayEnergy,
-            bank = bank,
-            onDismiss = { showHistoryDialog = false }
-        )
-    }
 
     if (showGatewaySettingsDialog) {
         GatewaySettingsDialog(
@@ -696,7 +692,7 @@ fun TodayEnergyCard(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Button moved to the bottom of the card!
+            // Button to open full history & monthly logs page
             Button(
                 onClick = onViewHistory,
                 modifier = Modifier.fillMaxWidth(),
@@ -705,7 +701,7 @@ fun TodayEnergyCard(
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Text(
-                    "VIEW ANNUAL LOG & DETAILED CHARTS",
+                    "VIEW FULL HISTORY & MONTHLY LOGS",
                     color = Color(0xFF64FFDA),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold
@@ -867,11 +863,28 @@ fun MonthlyEnergyBarChart(
 }
 
 @Composable
-fun EnergyHistoryDialog(
+fun EnergyHistoryScreen(
+    manager: BmsConnectionManager,
+    onBack: () -> Unit
+) {
+    val historyList by manager.energyHistory.historyList.collectAsState()
+    val todayRecord by manager.energyHistory.todayEnergy.collectAsState()
+    val bank by manager.totalBankState.collectAsState()
+
+    EnergyHistoryScreen(
+        historyList = historyList,
+        todayRecord = todayRecord,
+        bank = bank,
+        onBack = onBack
+    )
+}
+
+@Composable
+fun EnergyHistoryScreen(
     historyList: List<DailyEnergyRecord>,
     todayRecord: DailyEnergyRecord,
     bank: TotalBankData = TotalBankData(),
-    onDismiss: () -> Unit
+    onBack: () -> Unit
 ) {
     val nowCal = remember { Calendar.getInstance() }
     val currentYear = nowCal.get(Calendar.YEAR)
@@ -880,86 +893,207 @@ fun EnergyHistoryDialog(
     var targetYear by remember { mutableStateOf(currentYear) }
     var targetMonth by remember { mutableStateOf(currentMonth) }
 
-    val monthDays = remember(historyList, todayRecord, targetYear, targetMonth) {
-        buildMonthDays(historyList, todayRecord, targetYear, targetMonth)
-    }
-    val todayStr = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date()) }
-    var selectedRecord by remember { mutableStateOf<DailyEnergyRecord?>(todayRecord) }
-    val activeSelected = selectedRecord ?: todayRecord
-    var showAllDays by remember { mutableStateOf(false) }
-
     val isCurrentMonth = (targetYear == currentYear && targetMonth == currentMonth)
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Column {
+    val todayStr = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
+    val effectiveTodayDate = if (todayRecord.date.isNotBlank()) todayRecord.date else todayStr
+    val populatedTodayRecord = if (todayRecord.date.isBlank()) todayRecord.copy(date = effectiveTodayDate) else todayRecord
+
+    var showAllDays by remember { mutableStateOf(false) }
+    var showBarChart by remember { mutableStateOf(false) }
+    var expandedDate by remember { mutableStateOf<String?>(null) }
+
+    val combinedHistory = remember(historyList, populatedTodayRecord) {
+        val list = mutableListOf(populatedTodayRecord)
+        list.addAll(historyList.filter { it.date != populatedTodayRecord.date })
+        list
+    }
+
+    val monthPrefix = remember(targetYear, targetMonth) {
+        String.format(Locale.US, "%04d-%02d", targetYear, targetMonth + 1)
+    }
+
+    val monthRecordsMap = remember(combinedHistory, monthPrefix) {
+        combinedHistory.filter { it.date.startsWith(monthPrefix) }.associateBy { it.date }
+    }
+
+    // Days in target month in descending order (matching user's screenshot: newest day at the top)
+    val daysInMonthList = remember(monthRecordsMap, targetYear, targetMonth, isCurrentMonth) {
+        val cal = Calendar.getInstance().apply {
+            set(Calendar.YEAR, targetYear)
+            set(Calendar.MONTH, targetMonth)
+            set(Calendar.DAY_OF_MONTH, 1)
+        }
+        val maxDay = if (isCurrentMonth) Calendar.getInstance().get(Calendar.DAY_OF_MONTH) else cal.getActualMaximum(Calendar.DAY_OF_MONTH)
+        val list = mutableListOf<DailyEnergyRecord>()
+        for (d in maxDay downTo 1) {
+            val dateKey = String.format(Locale.US, "%04d-%02d-%02d", targetYear, targetMonth + 1, d)
+            val record = monthRecordsMap[dateKey] ?: DailyEnergyRecord(date = dateKey)
+            list.add(record)
+        }
+        list
+    }
+
+    // Full 365 days list (all recorded days descending)
+    val allDaysList = remember(combinedHistory) {
+        combinedHistory.filter { it.chargedAh > 0.05f || it.dischargedAh > 0.05f || it.chargedKwh > 0.01f || it.dischargedKwh > 0.01f }
+            .sortedByDescending { it.date }
+            .take(365)
+    }
+
+    val displayedList = if (showAllDays) allDaysList else daysInMonthList
+
+    // Monthly summary metrics calculation
+    val monthTotalChargedKwh = remember(daysInMonthList) {
+        daysInMonthList.sumOf { it.chargedKwh.toDouble() }.toFloat()
+    }
+    val monthTotalDischargedKwh = remember(daysInMonthList) {
+        daysInMonthList.sumOf { it.dischargedKwh.toDouble() }.toFloat()
+    }
+    val monthTotalChargedAh = remember(daysInMonthList) {
+        daysInMonthList.sumOf { it.chargedAh.toDouble() }.toFloat()
+    }
+    val monthTotalDischargedAh = remember(daysInMonthList) {
+        daysInMonthList.sumOf { it.dischargedAh.toDouble() }.toFloat()
+    }
+    val monthNetKwh = monthTotalChargedKwh - monthTotalDischargedKwh
+    val activeDaysCount = remember(daysInMonthList) {
+        daysInMonthList.count { it.chargedAh > 0.05f || it.dischargedAh > 0.05f || it.chargedKwh > 0.01f || it.dischargedKwh > 0.01f }
+    }
+
+    // Days formatted ascending for the visual bar chart
+    val monthDaysForChart = remember(historyList, populatedTodayRecord, targetYear, targetMonth) {
+        buildMonthDays(historyList, populatedTodayRecord, targetYear, targetMonth)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0F1117))
+    ) {
+        // 1. Top Navigation Bar (matching screenshot layout: < History)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onBack),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "‹",
+                    color = Color.White,
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Normal,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+            }
+
+            Text(
+                text = "History",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White,
+                textAlign = TextAlign.Center
+            )
+        }
+
+        HorizontalDivider(color = Color(0xFF1E2633), thickness = 1.dp)
+
+        // 2. Scrollable Body Content
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Month Selector Bar
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
+                    IconButton(
+                        onClick = {
+                            if (targetMonth == 0) {
+                                targetMonth = 11
+                                targetYear--
+                            } else {
+                                targetMonth--
+                            }
+                        },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Text("◀", color = Color(0xFF64FFDA), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    }
+
                     Text(
-                        text = "Annual Energy History",
+                        text = getMonthHeaderTitle(targetYear, targetMonth),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(
-                            onClick = {
-                                if (targetMonth == 0) {
-                                    targetMonth = 11
-                                    targetYear--
+
+                    IconButton(
+                        onClick = {
+                            if (!isCurrentMonth) {
+                                if (targetMonth == 11) {
+                                    targetMonth = 0
+                                    targetYear++
                                 } else {
-                                    targetMonth--
+                                    targetMonth++
                                 }
-                            },
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Text("◀", color = Color(0xFF64FFDA), fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        }
-                        IconButton(
-                            onClick = {
-                                if (!isCurrentMonth) {
-                                    if (targetMonth == 11) {
-                                        targetMonth = 0
-                                        targetYear++
-                                    } else {
-                                        targetMonth++
-                                    }
-                                }
-                            },
-                            enabled = !isCurrentMonth,
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Text("▶", color = if (!isCurrentMonth) Color(0xFF64FFDA) else Color.DarkGray, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        }
+                            }
+                        },
+                        enabled = !isCurrentMonth,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Text(
+                            "▶",
+                            color = if (!isCurrentMonth) Color(0xFF64FFDA) else Color.DarkGray,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
-                Text(
-                    text = "${getMonthHeaderTitle(targetYear, targetMonth)} — Daily Solar & Load Graph",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFF80CBC4)
-                )
+
+                // Toggle for Bar Chart
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (showBarChart) Color(0xFF004D40) else Color(0xFF1E232E))
+                        .clickable { showBarChart = !showBarChart }
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = if (showBarChart) "HIDE CHART" else "BAR CHART",
+                        fontSize = 11.sp,
+                        color = if (showBarChart) Color(0xFF64FFDA) else Color.LightGray,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
-        },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 480.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // 1. Monthly Bar Graph Card
+
+            // Optional Expandable Bar Chart
+            if (showBarChart) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF131F2A)),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(12.dp),
                     border = BorderStroke(1.dp, Color(0xFF00BFA5).copy(alpha = 0.4f))
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -968,245 +1102,426 @@ fun EnergyHistoryDialog(
                             Text("DAILY YIELD & LOAD BARS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64FFDA))
                             Text("Tap bar to inspect", fontSize = 10.sp, color = Color.Gray)
                         }
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
+                        Spacer(modifier = Modifier.height(10.dp))
                         MonthlyEnergyBarChart(
-                            monthDays = monthDays,
-                            selectedDate = activeSelected.date,
-                            onSelectDate = { rec -> selectedRecord = rec },
+                            monthDays = monthDaysForChart,
+                            selectedDate = expandedDate ?: effectiveTodayDate,
+                            onSelectDate = { rec -> expandedDate = rec.date },
                             compact = false
                         )
                     }
                 }
+            }
 
-                // 2. Selected Day Inspector Card
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1B2836)),
-                    shape = RoundedCornerShape(8.dp),
-                    border = BorderStroke(1.dp, Color(0xFF26A69A).copy(alpha = 0.5f))
+            // 3. Monthly Total Summary Card (Total power consumed and charged for the month)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF141D26)),
+                border = BorderStroke(1.dp, Color(0xFF263238)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            val isToday = activeSelected.date == todayStr
-                            Text(
-                                text = "${formatDisplayDate(activeSelected.date)}${if (isToday) " (TODAY)" else ""}",
-                                fontWeight = FontWeight.Bold,
-                                color = if (isToday) Color(0xFF64FFDA) else Color.White,
-                                fontSize = 13.sp
-                            )
-                            if (activeSelected.minSoc > 0 || activeSelected.maxSoc > 0) {
-                                val totalCap = when {
-                                    bank.nominalCapacityAh > 10f -> bank.nominalCapacityAh
-                                    bank.remainingCapacityAh > 0f && bank.capacityWeightedSoc > 0 -> {
-                                        bank.remainingCapacityAh / (bank.capacityWeightedSoc / 100f)
-                                    }
-                                    else -> 200f
-                                }
-                                val selMinAh = when {
-                                    activeSelected.minAh > 0.05f -> activeSelected.minAh
-                                    activeSelected.minSoc > 0 -> (activeSelected.minSoc / 100f) * totalCap
-                                    else -> 0f
-                                }
-                                val selMaxAh = when {
-                                    activeSelected.maxAh > 0.05f -> activeSelected.maxAh
-                                    activeSelected.maxSoc > 0 -> (activeSelected.maxSoc / 100f) * totalCap
-                                    else -> 0f
-                                }
-                                val socAhSpan = if (selMinAh > 0.05f && selMaxAh > 0.05f) {
-                                    if (kotlin.math.abs(selMaxAh - selMinAh) > 0.05f) {
-                                        " (${String.format(Locale.US, "%.1f → %.1f Ah", selMinAh, selMaxAh)})"
-                                    } else {
-                                        " (${String.format(Locale.US, "%.1f Ah", selMinAh)})"
-                                    }
-                                } else ""
-                                Text(
-                                    text = "SOC ${activeSelected.minSoc}% → ${activeSelected.maxSoc}%$socAhSpan",
-                                    color = Color.LightGray,
-                                    fontSize = 11.sp
-                                )
-                            }
-                        }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "${getMonthHeaderTitle(targetYear, targetMonth)} TOTALS",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF80CBC4),
+                            letterSpacing = 0.5.sp
+                        )
+                        Text(
+                            text = if (activeDaysCount > 0) "$activeDaysCount active days" else "0 days logged",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color(0xFF90A4AE)
+                        )
+                    }
 
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                    // Two prominent metric boxes: Charged & Consumed
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // Solar Charged Box
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .background(Color(0xFF0D281E), RoundedCornerShape(8.dp))
+                                .border(1.dp, Color(0xFF00E676).copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                                .padding(12.dp)
                         ) {
                             Column {
-                                Text("SOLAR YIELD", fontSize = 10.sp, color = Color.Gray)
                                 Text(
-                                    formatEnergy(activeSelected.chargedKwh, "+"),
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    text = "SOLAR CHARGED",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFF81C784),
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = formatEnergy(monthTotalChargedKwh, prefix = "+"),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
                                     color = Color(0xFF00E676),
                                     fontFamily = FontFamily.Monospace
                                 )
                                 Text(
-                                    String.format("+%.1f Ah", activeSelected.chargedAh),
-                                    fontSize = 11.sp,
+                                    text = String.format(Locale.US, "+%.1f Ah", monthTotalChargedAh),
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = Color(0xFFA5D6A7),
                                     fontFamily = FontFamily.Monospace
                                 )
                             }
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text("LOAD CONSUMED", fontSize = 10.sp, color = Color.Gray, textAlign = TextAlign.End)
+                        }
+
+                        // Load Consumed Box
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .background(Color(0xFF2B1C10), RoundedCornerShape(8.dp))
+                                .border(1.dp, Color(0xFFFF9100).copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                                .padding(12.dp)
+                        ) {
+                            Column {
                                 Text(
-                                    formatEnergy(activeSelected.dischargedKwh, "-"),
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    text = "LOAD CONSUMED",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFFFFB74D),
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = formatEnergy(monthTotalDischargedKwh, prefix = "-"),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
                                     color = Color(0xFFFF9100),
-                                    fontFamily = FontFamily.Monospace,
-                                    textAlign = TextAlign.End
+                                    fontFamily = FontFamily.Monospace
                                 )
                                 Text(
-                                    String.format("-%.1f Ah", activeSelected.dischargedAh),
-                                    fontSize = 11.sp,
+                                    text = String.format(Locale.US, "-%.1f Ah", monthTotalDischargedAh),
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = Color(0xFFFFCC80),
-                                    fontFamily = FontFamily.Monospace,
-                                    textAlign = TextAlign.End
+                                    fontFamily = FontFamily.Monospace
                                 )
                             }
                         }
-
                     }
-                }
 
-                // 3. Breakdown List (Monthly or Full 365 Days)
-                val combinedHistory = remember(historyList, todayRecord) {
-                    val list = mutableListOf(todayRecord)
-                    list.addAll(historyList.filter { it.date != todayRecord.date })
-                    list.filter { it.chargedAh > 0.05f || it.dischargedAh > 0.05f || it.chargedKwh > 0.01f || it.dischargedKwh > 0.01f }
-                }
-
-                val monthPrefix = remember(targetYear, targetMonth) {
-                    String.format(Locale.US, "%04d-%02d", targetYear, targetMonth + 1)
-                }
-
-                val displayedList = remember(combinedHistory, showAllDays, monthPrefix) {
-                    if (showAllDays) {
-                        combinedHistory.take(365)
-                    } else {
-                        combinedHistory.filter { it.date.startsWith(monthPrefix) }
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = if (showAllDays) "ALL LOGGED DAYS (${displayedList.size})" else "LOGS FOR ${getMonthHeaderTitle(targetYear, targetMonth)}",
-                        fontSize = 11.sp,
-                        color = Color.Gray,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (!showAllDays) Color(0xFF004D40) else Color(0xFF1E232E))
-                                .clickable { showAllDays = false }
-                                .padding(horizontal = 8.dp, vertical = 3.dp)
-                        ) {
-                            Text("MONTH", fontSize = 10.sp, color = if (!showAllDays) Color(0xFF64FFDA) else Color.LightGray, fontWeight = FontWeight.Bold)
+                    // Net Difference & Daily Average Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "NET YIELD:",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.Gray,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = formatNetEnergy(monthNetKwh),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (monthNetKwh >= 0f) Color(0xFF00E676) else Color(0xFFFF9100),
+                                fontFamily = FontFamily.Monospace
+                            )
                         }
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (showAllDays) Color(0xFF004D40) else Color(0xFF1E232E))
-                                .clickable { showAllDays = true }
-                                .padding(horizontal = 8.dp, vertical = 3.dp)
-                        ) {
-                            Text("365 DAYS", fontSize = 10.sp, color = if (showAllDays) Color(0xFF64FFDA) else Color.LightGray, fontWeight = FontWeight.Bold)
+
+                        if (activeDaysCount > 0) {
+                            val avgYield = monthTotalChargedKwh / activeDaysCount
+                            Text(
+                                text = String.format(Locale.US, "Avg: %.2f kWh/day", avgYield),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFF90A4AE)
+                            )
                         }
                     }
                 }
+            }
 
-                if (displayedList.isEmpty()) {
-                    Box(
+            // 4. Tabular Daily Breakdown Card (Matching User's Screenshot)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF141820)),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, Color(0xFF263238))
+            ) {
+                Column {
+                    // Header with Table View Mode (Month vs All 365 Days)
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 16.dp),
-                        contentAlignment = Alignment.Center
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = if (showAllDays) "Daily records are saved automatically each midnight."
-                            else "No energy logs recorded for ${getMonthHeaderTitle(targetYear, targetMonth)}.",
-                            color = Color.Gray,
+                            text = if (showAllDays) "ALL LOGGED DAYS (${allDaysList.size})" else "${getMonthHeaderTitle(targetYear, targetMonth)} LOGS",
                             fontSize = 11.sp,
-                            textAlign = TextAlign.Center
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF90A4AE),
+                            letterSpacing = 0.5.sp
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (!showAllDays) Color(0xFF004D40) else Color(0xFF1E232E))
+                                    .clickable { showAllDays = false }
+                                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Text("MONTH", fontSize = 10.sp, color = if (!showAllDays) Color(0xFF64FFDA) else Color.LightGray, fontWeight = FontWeight.Bold)
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (showAllDays) Color(0xFF004D40) else Color(0xFF1E232E))
+                                    .clickable { showAllDays = true }
+                                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Text("ALL 365 DAYS", fontSize = 10.sp, color = if (showAllDays) Color(0xFF64FFDA) else Color.LightGray, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(color = Color(0xFF1E2633), thickness = 1.dp)
+
+                    // Table Header Row (matching screenshot layout)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF171E28))
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Device time",
+                            modifier = Modifier.weight(1.0f),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFB0BEC5)
+                        )
+                        Text(
+                            text = "Solar Charged",
+                            modifier = Modifier.weight(1.1f),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF00E676),
+                            textAlign = TextAlign.End
+                        )
+                        Text(
+                            text = "Load Consumed",
+                            modifier = Modifier.weight(1.1f),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFFF9100),
+                            textAlign = TextAlign.End
                         )
                     }
-                } else {
-                    displayedList.forEach { item ->
-                        val isToday = item.date == todayStr
-                        val isSelected = item.date == activeSelected.date
-                        Card(
+
+                    HorizontalDivider(color = Color(0xFF263238), thickness = 1.dp)
+
+                    // Table Rows
+                    if (displayedList.isEmpty()) {
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { selectedRecord = item },
-                            colors = CardDefaults.cardColors(containerColor = if (isSelected) Color(0xFF22313F) else Color(0xFF1E232E)),
-                            border = if (isSelected) BorderStroke(1.dp, Color(0xFF64FFDA)) else null,
-                            shape = RoundedCornerShape(8.dp)
+                                .padding(32.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = if (showAllDays) "Daily records are saved automatically each midnight."
+                                else "No energy logs recorded for ${getMonthHeaderTitle(targetYear, targetMonth)}.",
+                                color = Color.Gray,
+                                fontSize = 12.sp,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    } else {
+                        displayedList.forEachIndexed { index, item ->
+                            val isToday = item.date == todayStr
+                            val isExpanded = expandedDate == item.date
+                            val displayDate = if (item.date.length >= 10) item.date.substring(5) else item.date
+
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { expandedDate = if (isExpanded) null else item.date }
+                            ) {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(if (isExpanded) Color(0xFF1C2533) else if (isToday) Color(0xFF14202B) else Color.Transparent)
+                                        .padding(horizontal = 14.dp, vertical = 11.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        "${formatDisplayDate(item.date)}${if (isToday) " (TODAY)" else ""}",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isToday) Color(0xFF64FFDA) else Color.White
-                                    )
-                                    if (item.minSoc > 0 || item.maxSoc > 0) {
-                                        Text("SOC ${item.minSoc}% → ${item.maxSoc}%", fontSize = 11.sp, color = Color.Gray)
+                                    // Column 1: Device time (e.g. 11-07)
+                                    Row(
+                                        modifier = Modifier.weight(1.0f),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = displayDate,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isToday) Color(0xFF64FFDA) else Color.White,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                        if (isToday) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .background(Color(0xFF00E676).copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                                            ) {
+                                                Text("TODAY", fontSize = 8.sp, color = Color(0xFF00E676), fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+
+                                    // Column 2: Solar Charged
+                                    Column(
+                                        modifier = Modifier.weight(1.1f),
+                                        horizontalAlignment = Alignment.End
+                                    ) {
+                                        if (item.chargedKwh <= 0.0005f && item.chargedAh <= 0.05f) {
+                                            Text(
+                                                text = "0.0 WH",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = Color(0xFF78909C),
+                                                fontFamily = FontFamily.Monospace,
+                                                textAlign = TextAlign.End
+                                            )
+                                        } else {
+                                            Text(
+                                                text = formatEnergy(item.chargedKwh, "+"),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF00E676),
+                                                fontFamily = FontFamily.Monospace,
+                                                textAlign = TextAlign.End
+                                            )
+                                            Text(
+                                                text = String.format(Locale.US, "+%.1f Ah", item.chargedAh),
+                                                fontSize = 10.sp,
+                                                color = Color(0xFFA5D6A7),
+                                                fontFamily = FontFamily.Monospace,
+                                                textAlign = TextAlign.End
+                                            )
+                                        }
+                                    }
+
+                                    // Column 3: Load Consumed
+                                    Column(
+                                        modifier = Modifier.weight(1.1f),
+                                        horizontalAlignment = Alignment.End
+                                    ) {
+                                        if (item.dischargedKwh <= 0.0005f && item.dischargedAh <= 0.05f) {
+                                            Text(
+                                                text = "0.0 WH",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = Color(0xFF78909C),
+                                                fontFamily = FontFamily.Monospace,
+                                                textAlign = TextAlign.End
+                                            )
+                                        } else {
+                                            Text(
+                                                text = formatEnergy(item.dischargedKwh, "-"),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFFFF9100),
+                                                fontFamily = FontFamily.Monospace,
+                                                textAlign = TextAlign.End
+                                            )
+                                            Text(
+                                                text = String.format(Locale.US, "-%.1f Ah", item.dischargedAh),
+                                                fontSize = 10.sp,
+                                                color = Color(0xFFFFCC80),
+                                                fontFamily = FontFamily.Monospace,
+                                                textAlign = TextAlign.End
+                                            )
+                                        }
                                     }
                                 }
 
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        "${formatEnergy(item.chargedKwh, "+")} (${String.format("%.1f", item.chargedAh)} Ah)",
-                                        color = Color(0xFF00E676),
-                                        fontSize = 12.sp,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                    Text(
-                                        "${formatEnergy(item.dischargedKwh, "-")} (${String.format("%.1f", item.dischargedAh)} Ah)",
-                                        color = Color(0xFFFF9100),
-                                        fontSize = 12.sp,
-                                        fontFamily = FontFamily.Monospace
-                                    )
+                                // Expanded details on tap
+                                if (isExpanded) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(Color(0xFF18202C))
+                                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = formatDisplayDate(item.date),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Color(0xFF80CBC4),
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            if (item.minSoc > 0 || item.maxSoc > 0) {
+                                                Text(
+                                                    text = "SOC: ${item.minSoc}% → ${item.maxSoc}%",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = Color.LightGray
+                                                )
+                                            }
+                                            if (item.minAh > 0.1f || item.maxAh > 0.1f) {
+                                                Text(
+                                                    text = String.format(Locale.US, "Cap: %.1f → %.1f Ah", item.minAh, item.maxAh),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = Color.LightGray
+                                                )
+                                            }
+                                            Text(
+                                                text = "Net: ${formatNetEnergy(item.netKwh)}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (item.netKwh >= 0) Color(0xFF00E676) else Color(0xFFFF9100)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Divider between rows
+                                if (index < displayedList.size - 1) {
+                                    HorizontalDivider(color = Color(0xFF1E2633), thickness = 0.8.dp)
                                 }
                             }
                         }
                     }
                 }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = onDismiss,
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Text("CLOSE", color = Color.White, fontWeight = FontWeight.Bold)
-            }
-        },
-        containerColor = Color(0xFF141820),
-        shape = RoundedCornerShape(16.dp)
+
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+fun EnergyHistoryDialog(
+    historyList: List<DailyEnergyRecord>,
+    todayRecord: DailyEnergyRecord,
+    bank: TotalBankData = TotalBankData(),
+    onDismiss: () -> Unit
+) {
+    EnergyHistoryScreen(
+        historyList = historyList,
+        todayRecord = todayRecord,
+        bank = bank,
+        onBack = onDismiss
     )
 }
 
