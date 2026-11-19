@@ -25,7 +25,8 @@ class Esp32GatewayClient(
     private val context: Context,
     private val scope: CoroutineScope,
     private val onDataReceived: (b1: BmsData, b2: BmsData, bank: TotalBankData, daily: DailyEnergyRecord) -> Unit,
-    private val onHistoryReceived: ((yesterday: DailyEnergyRecord) -> Unit)? = null
+    private val onHistoryReceived: ((yesterday: DailyEnergyRecord) -> Unit)? = null,
+    private val onBatchHistoryReceived: ((records: List<DailyEnergyRecord>) -> Unit)? = null
 ) {
     private val prefs = context.getSharedPreferences("jk_bms_prefs", Context.MODE_PRIVATE)
 
@@ -205,6 +206,38 @@ class Esp32GatewayClient(
                             lastUpdated = System.currentTimeMillis()
                         )
                         onHistoryReceived?.invoke(yRecord)
+                    }
+                }
+            }
+
+            // Sync 1-year archive from Firebase Realtime Database
+            if (isCloud && _firebaseUrl.value.isNotBlank()) {
+                val fullUrl = "${cleanFirebaseUrl(_firebaseUrl.value)}/daily_history.json"
+                val fullJson = fetchJson(fullUrl, timeoutMs = 4000)
+                if (fullJson != null && fullJson != "null" && fullJson.startsWith("{")) {
+                    val fullRoot = JSONObject(fullJson)
+                    val list = mutableListOf<DailyEnergyRecord>()
+                    val keys = fullRoot.keys()
+                    while (keys.hasNext()) {
+                        val dateKey = keys.next()
+                        val dObj = fullRoot.optJSONObject(dateKey) ?: continue
+                        list.add(
+                            DailyEnergyRecord(
+                                date = dateKey,
+                                chargedAh = dObj.optDouble("solarChargedAh", 0.0).toFloat(),
+                                chargedKwh = dObj.optDouble("solarChargedKwh", 0.0).toFloat(),
+                                dischargedAh = dObj.optDouble("loadConsumedAh", 0.0).toFloat(),
+                                dischargedKwh = dObj.optDouble("loadConsumedKwh", 0.0).toFloat(),
+                                minSoc = dObj.optInt("minSoc", 0),
+                                maxSoc = dObj.optInt("maxSoc", 0),
+                                minAh = dObj.optDouble("minAh", 0.0).toFloat(),
+                                maxAh = dObj.optDouble("maxAh", 0.0).toFloat(),
+                                lastUpdated = System.currentTimeMillis()
+                            )
+                        )
+                    }
+                    if (list.isNotEmpty()) {
+                        onBatchHistoryReceived?.invoke(list)
                     }
                 }
             }

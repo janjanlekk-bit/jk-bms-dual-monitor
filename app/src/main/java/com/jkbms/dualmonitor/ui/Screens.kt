@@ -705,7 +705,7 @@ fun TodayEnergyCard(
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Text(
-                    "VIEW 30-DAY LOG & DETAILED CHARTS",
+                    "VIEW ANNUAL LOG & DETAILED CHARTS",
                     color = Color(0xFF64FFDA),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold
@@ -873,25 +873,72 @@ fun EnergyHistoryDialog(
     bank: TotalBankData = TotalBankData(),
     onDismiss: () -> Unit
 ) {
-    val monthDays = remember(historyList, todayRecord) {
-        buildMonthDays(historyList, todayRecord)
+    val nowCal = remember { Calendar.getInstance() }
+    val currentYear = nowCal.get(Calendar.YEAR)
+    val currentMonth = nowCal.get(Calendar.MONTH)
+
+    var targetYear by remember { mutableStateOf(currentYear) }
+    var targetMonth by remember { mutableStateOf(currentMonth) }
+
+    val monthDays = remember(historyList, todayRecord, targetYear, targetMonth) {
+        buildMonthDays(historyList, todayRecord, targetYear, targetMonth)
     }
     val todayStr = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date()) }
     var selectedRecord by remember { mutableStateOf<DailyEnergyRecord?>(todayRecord) }
     val activeSelected = selectedRecord ?: todayRecord
+    var showAllDays by remember { mutableStateOf(false) }
+
+    val isCurrentMonth = (targetYear == currentYear && targetMonth == currentMonth)
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Annual Energy History",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = {
+                                if (targetMonth == 0) {
+                                    targetMonth = 11
+                                    targetYear--
+                                } else {
+                                    targetMonth--
+                                }
+                            },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Text("◀", color = Color(0xFF64FFDA), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                        IconButton(
+                            onClick = {
+                                if (!isCurrentMonth) {
+                                    if (targetMonth == 11) {
+                                        targetMonth = 0
+                                        targetYear++
+                                    } else {
+                                        targetMonth++
+                                    }
+                                }
+                            },
+                            enabled = !isCurrentMonth,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Text("▶", color = if (!isCurrentMonth) Color(0xFF64FFDA) else Color.DarkGray, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
                 Text(
-                    text = "30-Day Energy History",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-                Text(
-                    text = "${getMonthHeaderTitle()} — Daily Solar & Load Graph",
+                    text = "${getMonthHeaderTitle(targetYear, targetMonth)} — Daily Solar & Load Graph",
                     style = MaterialTheme.typography.labelSmall,
                     color = Color(0xFF80CBC4)
                 )
@@ -1031,16 +1078,59 @@ fun EnergyHistoryDialog(
                     }
                 }
 
-                // 3. 30-Day Breakdown List
-                Text("PAST 30 DAYS LOG", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
-
+                // 3. Breakdown List (Monthly or Full 365 Days)
                 val combinedHistory = remember(historyList, todayRecord) {
                     val list = mutableListOf(todayRecord)
                     list.addAll(historyList.filter { it.date != todayRecord.date })
                     list.filter { it.chargedAh > 0.05f || it.dischargedAh > 0.05f || it.chargedKwh > 0.01f || it.dischargedKwh > 0.01f }
                 }
 
-                if (combinedHistory.isEmpty()) {
+                val monthPrefix = remember(targetYear, targetMonth) {
+                    String.format(Locale.US, "%04d-%02d", targetYear, targetMonth + 1)
+                }
+
+                val displayedList = remember(combinedHistory, showAllDays, monthPrefix) {
+                    if (showAllDays) {
+                        combinedHistory.take(365)
+                    } else {
+                        combinedHistory.filter { it.date.startsWith(monthPrefix) }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (showAllDays) "ALL LOGGED DAYS (${displayedList.size})" else "LOGS FOR ${getMonthHeaderTitle(targetYear, targetMonth)}",
+                        fontSize = 11.sp,
+                        color = Color.Gray,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (!showAllDays) Color(0xFF004D40) else Color(0xFF1E232E))
+                                .clickable { showAllDays = false }
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Text("MONTH", fontSize = 10.sp, color = if (!showAllDays) Color(0xFF64FFDA) else Color.LightGray, fontWeight = FontWeight.Bold)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (showAllDays) Color(0xFF004D40) else Color(0xFF1E232E))
+                                .clickable { showAllDays = true }
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Text("365 DAYS", fontSize = 10.sp, color = if (showAllDays) Color(0xFF64FFDA) else Color.LightGray, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                if (displayedList.isEmpty()) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1048,14 +1138,15 @@ fun EnergyHistoryDialog(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            "Daily records are saved automatically each midnight.",
+                            text = if (showAllDays) "Daily records are saved automatically each midnight."
+                            else "No energy logs recorded for ${getMonthHeaderTitle(targetYear, targetMonth)}.",
                             color = Color.Gray,
                             fontSize = 11.sp,
                             textAlign = TextAlign.Center
                         )
                     }
                 } else {
-                    combinedHistory.take(30).forEach { item ->
+                    displayedList.forEach { item ->
                         val isToday = item.date == todayStr
                         val isSelected = item.date == activeSelected.date
                         Card(
@@ -1121,7 +1212,9 @@ fun EnergyHistoryDialog(
 
 fun buildMonthDays(
     historyList: List<DailyEnergyRecord>,
-    todayRecord: DailyEnergyRecord
+    todayRecord: DailyEnergyRecord,
+    targetYear: Int = Calendar.getInstance().get(Calendar.YEAR),
+    targetMonth: Int = Calendar.getInstance().get(Calendar.MONTH) // 0-indexed
 ): List<DailyEnergyRecord> {
     val recordsByDate = mutableMapOf<String, DailyEnergyRecord>()
     for (rec in historyList) {
@@ -1132,14 +1225,16 @@ fun buildMonthDays(
     val populatedTodayRecord = if (todayRecord.date.isBlank()) todayRecord.copy(date = effectiveTodayDate) else todayRecord
     recordsByDate[effectiveTodayDate] = populatedTodayRecord
 
-    val cal = Calendar.getInstance()
-    val year = cal.get(Calendar.YEAR)
-    val month = cal.get(Calendar.MONTH) // 0-indexed
+    val cal = Calendar.getInstance().apply {
+        set(Calendar.YEAR, targetYear)
+        set(Calendar.MONTH, targetMonth)
+        set(Calendar.DAY_OF_MONTH, 1)
+    }
     val maxDay = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
 
     val result = mutableListOf<DailyEnergyRecord>()
     for (d in 1..maxDay) {
-        val dateKey = String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, d)
+        val dateKey = String.format(Locale.US, "%04d-%02d-%02d", targetYear, targetMonth + 1, d)
         val existing = recordsByDate[dateKey]
         if (existing != null) {
             result.add(existing)
@@ -1150,8 +1245,14 @@ fun buildMonthDays(
     return result
 }
 
-fun getMonthHeaderTitle(): String {
-    val cal = Calendar.getInstance()
+fun getMonthHeaderTitle(
+    targetYear: Int = Calendar.getInstance().get(Calendar.YEAR),
+    targetMonth: Int = Calendar.getInstance().get(Calendar.MONTH)
+): String {
+    val cal = Calendar.getInstance().apply {
+        set(Calendar.YEAR, targetYear)
+        set(Calendar.MONTH, targetMonth)
+    }
     return SimpleDateFormat("MMMM yyyy", Locale.US).format(cal.time).uppercase()
 }
 

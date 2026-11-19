@@ -27,6 +27,9 @@ class BmsConnectionManager(context: Context) {
         },
         onHistoryReceived = { gYesterday ->
             energyHistory.syncYesterdayFromGateway(gYesterday)
+        },
+        onBatchHistoryReceived = { records ->
+            energyHistory.syncFullHistoryBatch(records)
         }
     )
 

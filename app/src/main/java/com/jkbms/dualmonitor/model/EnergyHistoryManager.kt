@@ -243,7 +243,7 @@ class EnergyHistoryManager(
         if (prev.date.isNotBlank() && (prev.chargedAh > 0.05f || prev.dischargedAh > 0.05f || prev.chargedKwh > 0.01f || prev.dischargedKwh > 0.01f)) {
             val currentList = _historyList.value.filter { it.date != prev.date }.toMutableList()
             currentList.add(0, prev) // newest first
-            val trimmed = currentList.take(30)
+            val trimmed = currentList.take(365) // Keep up to 1 year of daily logs
             _historyList.value = trimmed
             saveHistoryList(trimmed)
         }
@@ -474,7 +474,7 @@ class EnergyHistoryManager(
                     if (oldRecord.chargedAh > 0.05f || oldRecord.dischargedAh > 0.05f) {
                         val currentList = _historyList.value.filter { it.date != savedDate }.toMutableList()
                         currentList.add(0, oldRecord)
-                        _historyList.value = currentList.take(30)
+                        _historyList.value = currentList.take(365)
                         saveHistoryList(_historyList.value)
                     }
                     currentDate = todayStr
@@ -528,8 +528,25 @@ class EnergyHistoryManager(
             currentList.add(yesterday)
             currentList.sortByDescending { it.date }
         }
-        val trimmed = currentList.take(30)
+        val trimmed = currentList.take(365) // Keep up to 1 year of daily logs
         _historyList.value = trimmed
         saveHistoryList(trimmed)
+    }
+
+    @Synchronized
+    fun syncFullHistoryBatch(records: List<DailyEnergyRecord>) {
+        if (records.isEmpty()) return
+        val currentMap = _historyList.value.associateBy { it.date }.toMutableMap()
+        for (rec in records) {
+            if (rec.date.isNotBlank() && (rec.chargedAh > 0.05f || rec.dischargedAh > 0.05f || rec.chargedKwh > 0.01f || rec.dischargedKwh > 0.01f)) {
+                val existing = currentMap[rec.date]
+                if (existing == null || rec.lastUpdated >= existing.lastUpdated) {
+                    currentMap[rec.date] = rec
+                }
+            }
+        }
+        val sortedList = currentMap.values.sortedByDescending { it.date }.take(365)
+        _historyList.value = sortedList
+        saveHistoryList(sortedList)
     }
 }

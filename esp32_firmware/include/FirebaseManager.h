@@ -134,6 +134,49 @@ private:
             }
             http.end();
         }
+
+        // Permanently archive completed days under /daily_history/<date>.json in Firebase
+        if (webServer && webServer->energy) {
+            archiveDailyRecord(webServer->energy->today);
+            if (webServer->energy->yesterday.date.length() > 0) {
+                archiveDailyRecord(webServer->energy->yesterday);
+            }
+        }
+    }
+
+    void archiveDailyRecord(const DailyRecord& rec) {
+        if (rec.date.length() == 0) return;
+        if (rec.solarChargedAh < 0.05f && rec.loadConsumedAh < 0.05f) return;
+
+        JsonDocument doc;
+        doc["date"] = rec.date;
+        doc["solarChargedKwh"] = rec.solarChargedKwh;
+        doc["solarChargedAh"] = rec.solarChargedAh;
+        doc["loadConsumedKwh"] = rec.loadConsumedKwh;
+        doc["loadConsumedAh"] = rec.loadConsumedAh;
+        doc["minSoc"] = rec.minSoc;
+        doc["maxSoc"] = rec.maxSoc;
+        doc["minAh"] = rec.minAh;
+        doc["maxAh"] = rec.maxAh;
+
+        String json;
+        serializeJson(doc, json);
+
+        String url = host + "/daily_history/" + rec.date + ".json";
+        if (auth.length() > 0) {
+            url += "?auth=" + auth;
+        }
+
+        HTTPClient http;
+        http.setTimeout(3000);
+        if (http.begin(client, url)) {
+            http.addHeader("Content-Type", "application/json");
+            int httpCode = http.PUT(json);
+            if (httpCode > 0) {
+                http.getString();
+            }
+            http.end();
+        }
     }
 
     void checkCommands() {
