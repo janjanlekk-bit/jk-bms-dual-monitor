@@ -1813,21 +1813,6 @@ fun EnergyHistoryDialog(
     )
 }
 
-@Composable
-fun EnergyHistoryDialog(
-    historyList: List<DailyEnergyRecord>,
-    todayRecord: DailyEnergyRecord,
-    bank: TotalBankData = TotalBankData(),
-    onDismiss: () -> Unit
-) {
-    EnergyHistoryScreen(
-        historyList = historyList,
-        todayRecord = todayRecord,
-        bank = bank,
-        onBack = onDismiss
-    )
-}
-
 fun buildMonthDays(
     historyList: List<DailyEnergyRecord>,
     todayRecord: DailyEnergyRecord,
