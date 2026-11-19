@@ -29,6 +29,15 @@ class EnergyHistoryManager(
     private val _historyList = MutableStateFlow<List<DailyEnergyRecord>>(emptyList())
     val historyList: StateFlow<List<DailyEnergyRecord>> = _historyList.asStateFlow()
 
+    private val _billingCycleStartDay = MutableStateFlow(prefs.getInt("billing_cycle_start_day", 10))
+    val billingCycleStartDay: StateFlow<Int> = _billingCycleStartDay.asStateFlow()
+
+    fun setBillingCycleStartDay(day: Int) {
+        val clamped = day.coerceIn(1, 28)
+        _billingCycleStartDay.value = clamped
+        prefs.edit().putInt("billing_cycle_start_day", clamped).apply()
+    }
+
     // Internal daily state
     private var currentDate: String = ""
     private var b1StartRemainingAh: Float = 0f

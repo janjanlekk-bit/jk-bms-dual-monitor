@@ -862,6 +862,97 @@ fun MonthlyEnergyBarChart(
     }
 }
 
+data class BillingCycleInfo(
+    val startDateStr: String,
+    val endDateStr: String,
+    val label: String,
+    val days: List<DailyEnergyRecord>,
+    val isCurrentCycle: Boolean
+)
+
+fun getDaySuffix(n: Int): String {
+    return if (n in 11..13) "th" else when (n % 10) {
+        1 -> "st"
+        2 -> "nd"
+        3 -> "rd"
+        else -> "th"
+    }
+}
+
+fun calculateBillingCycle(
+    billingStartDay: Int,
+    cycleOffset: Int,
+    historyList: List<DailyEnergyRecord>,
+    todayRecord: DailyEnergyRecord
+): BillingCycleInfo {
+    val now = Calendar.getInstance()
+    val currentDay = now.get(Calendar.DAY_OF_MONTH)
+
+    val baseCal = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+        if (currentDay < billingStartDay) {
+            add(Calendar.MONTH, -1)
+        }
+        val maxDays = getActualMaximum(Calendar.DAY_OF_MONTH)
+        set(Calendar.DAY_OF_MONTH, billingStartDay.coerceAtMost(maxDays))
+    }
+
+    baseCal.add(Calendar.MONTH, cycleOffset)
+
+    val startCal = baseCal.clone() as Calendar
+    val endCal = (baseCal.clone() as Calendar).apply {
+        add(Calendar.MONTH, 1)
+        add(Calendar.DAY_OF_MONTH, -1)
+    }
+
+    val isCurrentCycle = (cycleOffset == 0)
+
+    val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+    val displayFormat = SimpleDateFormat("MMM d, yyyy", Locale.US)
+    val shortDisplayFormat = SimpleDateFormat("MMM d", Locale.US)
+
+    val startDateStr = dateFormat.format(startCal.time)
+    val endDateStr = dateFormat.format(endCal.time)
+
+    val label = if (startCal.get(Calendar.YEAR) == endCal.get(Calendar.YEAR)) {
+        "${shortDisplayFormat.format(startCal.time)} – ${displayFormat.format(endCal.time)}"
+    } else {
+        "${displayFormat.format(startCal.time)} – ${displayFormat.format(endCal.time)}"
+    }
+
+    val todayStr = dateFormat.format(Date())
+    val effectiveTodayDate = if (todayRecord.date.isNotBlank()) todayRecord.date else todayStr
+    val populatedTodayRecord = if (todayRecord.date.isBlank()) todayRecord.copy(date = effectiveTodayDate) else todayRecord
+
+    val recordsByDate = mutableMapOf<String, DailyEnergyRecord>()
+    for (rec in historyList) {
+        if (rec.date.isNotBlank()) recordsByDate[rec.date] = rec
+    }
+    recordsByDate[effectiveTodayDate] = populatedTodayRecord
+
+    val latestCal = if (isCurrentCycle && now.before(endCal)) now else endCal
+
+    val daysList = mutableListOf<DailyEnergyRecord>()
+    val iterCal = latestCal.clone() as Calendar
+    while (!iterCal.before(startCal)) {
+        val dStr = dateFormat.format(iterCal.time)
+        val rec = recordsByDate[dStr] ?: DailyEnergyRecord(date = dStr)
+        daysList.add(rec)
+        iterCal.add(Calendar.DAY_OF_MONTH, -1)
+    }
+
+    return BillingCycleInfo(
+        startDateStr = startDateStr,
+        endDateStr = endDateStr,
+        label = label,
+        days = daysList,
+        isCurrentCycle = isCurrentCycle
+    )
+}
+
 @Composable
 fun EnergyHistoryScreen(
     manager: BmsConnectionManager,
@@ -870,11 +961,14 @@ fun EnergyHistoryScreen(
     val historyList by manager.energyHistory.historyList.collectAsState()
     val todayRecord by manager.energyHistory.todayEnergy.collectAsState()
     val bank by manager.totalBankState.collectAsState()
+    val billingCycleStartDay by manager.energyHistory.billingCycleStartDay.collectAsState()
 
     EnergyHistoryScreen(
         historyList = historyList,
         todayRecord = todayRecord,
         bank = bank,
+        billingCycleStartDay = billingCycleStartDay,
+        onUpdateBillingCycleStartDay = { day -> manager.energyHistory.setBillingCycleStartDay(day) },
         onBack = onBack
     )
 }
@@ -884,6 +978,8 @@ fun EnergyHistoryScreen(
     historyList: List<DailyEnergyRecord>,
     todayRecord: DailyEnergyRecord,
     bank: TotalBankData = TotalBankData(),
+    billingCycleStartDay: Int = 10,
+    onUpdateBillingCycleStartDay: (Int) -> Unit = {},
     onBack: () -> Unit
 ) {
     val nowCal = remember { Calendar.getInstance() }
@@ -892,6 +988,9 @@ fun EnergyHistoryScreen(
 
     var targetYear by remember { mutableStateOf(currentYear) }
     var targetMonth by remember { mutableStateOf(currentMonth) }
+    var cycleOffset by remember { mutableStateOf(0) }
+    var isBillingCycleMode by remember { mutableStateOf(true) }
+    var showCutoffDialog by remember { mutableStateOf(false) }
 
     val isCurrentMonth = (targetYear == currentYear && targetMonth == currentMonth)
 
@@ -909,6 +1008,12 @@ fun EnergyHistoryScreen(
         list
     }
 
+    // 1. Billing Cycle Calculation (Cutoff-based)
+    val billingCycleInfo = remember(billingCycleStartDay, cycleOffset, historyList, populatedTodayRecord) {
+        calculateBillingCycle(billingCycleStartDay, cycleOffset, historyList, populatedTodayRecord)
+    }
+
+    // 2. Calendar Month Calculation
     val monthPrefix = remember(targetYear, targetMonth) {
         String.format(Locale.US, "%04d-%02d", targetYear, targetMonth + 1)
     }
@@ -917,7 +1022,6 @@ fun EnergyHistoryScreen(
         combinedHistory.filter { it.date.startsWith(monthPrefix) }.associateBy { it.date }
     }
 
-    // Days in target month in descending order (matching user's screenshot: newest day at the top)
     val daysInMonthList = remember(monthRecordsMap, targetYear, targetMonth, isCurrentMonth) {
         val cal = Calendar.getInstance().apply {
             set(Calendar.YEAR, targetYear)
@@ -934,36 +1038,42 @@ fun EnergyHistoryScreen(
         list
     }
 
-    // Full 365 days list (all recorded days descending)
+    // Full 365 days list
     val allDaysList = remember(combinedHistory) {
         combinedHistory.filter { it.chargedAh > 0.05f || it.dischargedAh > 0.05f || it.chargedKwh > 0.01f || it.dischargedKwh > 0.01f }
             .sortedByDescending { it.date }
             .take(365)
     }
 
-    val displayedList = if (showAllDays) allDaysList else daysInMonthList
+    // Effective active list for the table and summary metrics
+    val activePeriodDays = if (isBillingCycleMode) billingCycleInfo.days else daysInMonthList
+    val displayedList = if (showAllDays) allDaysList else activePeriodDays
 
-    // Monthly summary metrics calculation
-    val monthTotalChargedKwh = remember(daysInMonthList) {
-        daysInMonthList.sumOf { it.chargedKwh.toDouble() }.toFloat()
+    // Totals calculation for the active period (Billing Cycle or Month)
+    val totalChargedKwh = remember(activePeriodDays) {
+        activePeriodDays.sumOf { it.chargedKwh.toDouble() }.toFloat()
     }
-    val monthTotalDischargedKwh = remember(daysInMonthList) {
-        daysInMonthList.sumOf { it.dischargedKwh.toDouble() }.toFloat()
+    val totalDischargedKwh = remember(activePeriodDays) {
+        activePeriodDays.sumOf { it.dischargedKwh.toDouble() }.toFloat()
     }
-    val monthTotalChargedAh = remember(daysInMonthList) {
-        daysInMonthList.sumOf { it.chargedAh.toDouble() }.toFloat()
+    val totalChargedAh = remember(activePeriodDays) {
+        activePeriodDays.sumOf { it.chargedAh.toDouble() }.toFloat()
     }
-    val monthTotalDischargedAh = remember(daysInMonthList) {
-        daysInMonthList.sumOf { it.dischargedAh.toDouble() }.toFloat()
+    val totalDischargedAh = remember(activePeriodDays) {
+        activePeriodDays.sumOf { it.dischargedAh.toDouble() }.toFloat()
     }
-    val monthNetKwh = monthTotalChargedKwh - monthTotalDischargedKwh
-    val activeDaysCount = remember(daysInMonthList) {
-        daysInMonthList.count { it.chargedAh > 0.05f || it.dischargedAh > 0.05f || it.chargedKwh > 0.01f || it.dischargedKwh > 0.01f }
+    val netKwh = totalChargedKwh - totalDischargedKwh
+    val activeDaysCount = remember(activePeriodDays) {
+        activePeriodDays.count { it.chargedAh > 0.05f || it.dischargedAh > 0.05f || it.chargedKwh > 0.01f || it.dischargedKwh > 0.01f }
     }
 
     // Days formatted ascending for the visual bar chart
-    val monthDaysForChart = remember(historyList, populatedTodayRecord, targetYear, targetMonth) {
-        buildMonthDays(historyList, populatedTodayRecord, targetYear, targetMonth)
+    val chartDays = remember(isBillingCycleMode, billingCycleInfo, historyList, populatedTodayRecord, targetYear, targetMonth) {
+        if (isBillingCycleMode) {
+            billingCycleInfo.days.reversed()
+        } else {
+            buildMonthDays(historyList, populatedTodayRecord, targetYear, targetMonth)
+        }
     }
 
     Column(
@@ -971,7 +1081,7 @@ fun EnergyHistoryScreen(
             .fillMaxSize()
             .background(Color(0xFF0F1117))
     ) {
-        // 1. Top Navigation Bar (matching screenshot layout: < History)
+        // 1. Top Navigation Bar (< History)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1012,9 +1122,70 @@ fun EnergyHistoryScreen(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Month Selector Bar
+            // Mode Switcher: BILLING CYCLE vs CALENDAR MONTH + CUTOFF BUTTON
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    modifier = Modifier
+                        .background(Color(0xFF141A22), RoundedCornerShape(8.dp))
+                        .border(1.dp, Color(0xFF263238), RoundedCornerShape(8.dp))
+                        .padding(3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (isBillingCycleMode) Color(0xFF004D40) else Color.Transparent)
+                            .clickable { isBillingCycleMode = true }
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "⚡ BILLING CYCLE",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isBillingCycleMode) Color(0xFF64FFDA) else Color.Gray
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (!isBillingCycleMode) Color(0xFF004D40) else Color.Transparent)
+                            .clickable { isBillingCycleMode = false }
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "📅 CALENDAR",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (!isBillingCycleMode) Color(0xFF64FFDA) else Color.Gray
+                        )
+                    }
+                }
+
+                // Cutoff Setting Button (quick configure)
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF162232))
+                        .border(1.dp, Color(0xFF2979FF).copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                        .clickable { showCutoffDialog = true }
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = "CUTOFF: ${billingCycleStartDay}${getDaySuffix(billingCycleStartDay)} ⚙️",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF90CAF9)
+                    )
+                }
+            }
+
+            // Period Navigation Bar (Cycle or Month)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1026,11 +1197,15 @@ fun EnergyHistoryScreen(
                 ) {
                     IconButton(
                         onClick = {
-                            if (targetMonth == 0) {
-                                targetMonth = 11
-                                targetYear--
+                            if (isBillingCycleMode) {
+                                if (cycleOffset > -12) cycleOffset--
                             } else {
-                                targetMonth--
+                                if (targetMonth == 0) {
+                                    targetMonth = 11
+                                    targetYear--
+                                } else {
+                                    targetMonth--
+                                }
                             }
                         },
                         modifier = Modifier.size(36.dp)
@@ -1039,7 +1214,7 @@ fun EnergyHistoryScreen(
                     }
 
                     Text(
-                        text = getMonthHeaderTitle(targetYear, targetMonth),
+                        text = if (isBillingCycleMode) billingCycleInfo.label else getMonthHeaderTitle(targetYear, targetMonth),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -1047,21 +1222,26 @@ fun EnergyHistoryScreen(
 
                     IconButton(
                         onClick = {
-                            if (!isCurrentMonth) {
-                                if (targetMonth == 11) {
-                                    targetMonth = 0
-                                    targetYear++
-                                } else {
-                                    targetMonth++
+                            if (isBillingCycleMode) {
+                                if (cycleOffset < 0) cycleOffset++
+                            } else {
+                                if (!isCurrentMonth) {
+                                    if (targetMonth == 11) {
+                                        targetMonth = 0
+                                        targetYear++
+                                    } else {
+                                        targetMonth++
+                                    }
                                 }
                             }
                         },
-                        enabled = !isCurrentMonth,
+                        enabled = if (isBillingCycleMode) cycleOffset < 0 else !isCurrentMonth,
                         modifier = Modifier.size(36.dp)
                     ) {
+                        val isEnabled = if (isBillingCycleMode) cycleOffset < 0 else !isCurrentMonth
                         Text(
                             "▶",
-                            color = if (!isCurrentMonth) Color(0xFF64FFDA) else Color.DarkGray,
+                            color = if (isEnabled) Color(0xFF64FFDA) else Color.DarkGray,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -1104,7 +1284,7 @@ fun EnergyHistoryScreen(
                         }
                         Spacer(modifier = Modifier.height(10.dp))
                         MonthlyEnergyBarChart(
-                            monthDays = monthDaysForChart,
+                            monthDays = chartDays,
                             selectedDate = expandedDate ?: effectiveTodayDate,
                             onSelectDate = { rec -> expandedDate = rec.date },
                             compact = false
@@ -1113,7 +1293,7 @@ fun EnergyHistoryScreen(
                 }
             }
 
-            // 3. Monthly Total Summary Card (Total power consumed and charged for the month)
+            // 3. Period Total Summary Card (Billing Cycle or Month)
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF141D26)),
@@ -1129,13 +1309,23 @@ fun EnergyHistoryScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "${getMonthHeaderTitle(targetYear, targetMonth)} TOTALS",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF80CBC4),
-                            letterSpacing = 0.5.sp
-                        )
+                        Column {
+                            Text(
+                                text = if (isBillingCycleMode) "BILLING CYCLE TOTALS" else "${getMonthHeaderTitle(targetYear, targetMonth)} TOTALS",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF80CBC4),
+                                letterSpacing = 0.5.sp
+                            )
+                            if (isBillingCycleMode) {
+                                Text(
+                                    text = if (billingCycleInfo.isCurrentCycle) "Current Cycle (${billingCycleInfo.days.size} days elapsed)" else "${billingCycleInfo.days.size} days in cycle",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFF64FFDA),
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
                         Text(
                             text = if (activeDaysCount > 0) "$activeDaysCount active days" else "0 days logged",
                             style = MaterialTheme.typography.labelSmall,
@@ -1165,14 +1355,14 @@ fun EnergyHistoryScreen(
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = formatEnergy(monthTotalChargedKwh, prefix = "+"),
+                                    text = formatEnergy(totalChargedKwh, prefix = "+"),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = Color(0xFF00E676),
                                     fontFamily = FontFamily.Monospace
                                 )
                                 Text(
-                                    text = String.format(Locale.US, "+%.1f Ah", monthTotalChargedAh),
+                                    text = String.format(Locale.US, "+%.1f Ah", totalChargedAh),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = Color(0xFFA5D6A7),
                                     fontFamily = FontFamily.Monospace
@@ -1197,14 +1387,14 @@ fun EnergyHistoryScreen(
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = formatEnergy(monthTotalDischargedKwh, prefix = "-"),
+                                    text = formatEnergy(totalDischargedKwh, prefix = "-"),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = Color(0xFFFF9100),
                                     fontFamily = FontFamily.Monospace
                                 )
                                 Text(
-                                    text = String.format(Locale.US, "-%.1f Ah", monthTotalDischargedAh),
+                                    text = String.format(Locale.US, "-%.1f Ah", totalDischargedAh),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = Color(0xFFFFCC80),
                                     fontFamily = FontFamily.Monospace
@@ -1227,18 +1417,19 @@ fun EnergyHistoryScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = formatNetEnergy(monthNetKwh),
+                                text = formatNetEnergy(netKwh),
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = if (monthNetKwh >= 0f) Color(0xFF00E676) else Color(0xFFFF9100),
+                                color = if (netKwh >= 0f) Color(0xFF00E676) else Color(0xFFFF9100),
                                 fontFamily = FontFamily.Monospace
                             )
                         }
 
                         if (activeDaysCount > 0) {
-                            val avgYield = monthTotalChargedKwh / activeDaysCount
+                            val avgYield = totalChargedKwh / activeDaysCount
+                            val avgLoad = totalDischargedKwh / activeDaysCount
                             Text(
-                                text = String.format(Locale.US, "Avg: %.2f kWh/day", avgYield),
+                                text = String.format(Locale.US, "Avg: %.1f kWh solar • %.1f kWh load", avgYield, avgLoad),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = Color(0xFF90A4AE)
                             )
@@ -1255,7 +1446,7 @@ fun EnergyHistoryScreen(
                 border = BorderStroke(1.dp, Color(0xFF263238))
             ) {
                 Column {
-                    // Header with Table View Mode (Month vs All 365 Days)
+                    // Header with Table View Mode (Period vs All 365 Days)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1264,7 +1455,9 @@ fun EnergyHistoryScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = if (showAllDays) "ALL LOGGED DAYS (${allDaysList.size})" else "${getMonthHeaderTitle(targetYear, targetMonth)} LOGS",
+                            text = if (showAllDays) "ALL LOGGED DAYS (${allDaysList.size})"
+                                   else if (isBillingCycleMode) "CYCLE LOGS (${displayedList.size} DAYS)"
+                                   else "${getMonthHeaderTitle(targetYear, targetMonth)} LOGS",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF90A4AE),
@@ -1278,7 +1471,12 @@ fun EnergyHistoryScreen(
                                     .clickable { showAllDays = false }
                                     .padding(horizontal = 10.dp, vertical = 4.dp)
                             ) {
-                                Text("MONTH", fontSize = 10.sp, color = if (!showAllDays) Color(0xFF64FFDA) else Color.LightGray, fontWeight = FontWeight.Bold)
+                                Text(
+                                    text = if (isBillingCycleMode) "CYCLE" else "MONTH",
+                                    fontSize = 10.sp,
+                                    color = if (!showAllDays) Color(0xFF64FFDA) else Color.LightGray,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
                             Box(
                                 modifier = Modifier
@@ -1339,7 +1537,7 @@ fun EnergyHistoryScreen(
                         ) {
                             Text(
                                 text = if (showAllDays) "Daily records are saved automatically each midnight."
-                                else "No energy logs recorded for ${getMonthHeaderTitle(targetYear, targetMonth)}.",
+                                else "No energy logs recorded for this period.",
                                 color = Color.Gray,
                                 fontSize = 12.sp,
                                 textAlign = TextAlign.Center
@@ -1508,6 +1706,111 @@ fun EnergyHistoryScreen(
             Spacer(modifier = Modifier.height(16.dp))
         }
     }
+
+    // Billing Cutoff Configuration Dialog
+    if (showCutoffDialog) {
+        var tempDay by remember { mutableStateOf(billingCycleStartDay) }
+        AlertDialog(
+            onDismissRequest = { showCutoffDialog = false },
+            title = {
+                Column {
+                    Text("Billing Cycle Cutoff Day", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Set the day of the month your electricity bill starts. Energy data will be aligned to your exact billing period.",
+                        color = Color.Gray,
+                        fontSize = 12.sp
+                    )
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = { if (tempDay > 1) tempDay-- },
+                            modifier = Modifier.background(Color(0xFF1E2838), CircleShape)
+                        ) {
+                            Text("−", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Text(
+                            text = "Starts ${tempDay}${getDaySuffix(tempDay)}",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF64FFDA),
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
+                        IconButton(
+                            onClick = { if (tempDay < 28) tempDay++ },
+                            modifier = Modifier.background(Color(0xFF1E2838), CircleShape)
+                        ) {
+                            Text("+", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Text("Quick Presets:", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        listOf(1, 5, 10, 15, 20, 25).forEach { d ->
+                            val isSelected = tempDay == d
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (isSelected) Color(0xFF00E676) else Color(0xFF222B38))
+                                    .clickable { tempDay = d }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = "${d}${getDaySuffix(d)}",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSelected) Color.Black else Color.White
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onUpdateBillingCycleStartDay(tempDay)
+                        showCutoffDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676))
+                ) {
+                    Text("SAVE CUTOFF", color = Color.Black, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCutoffDialog = false }) {
+                    Text("CANCEL", color = Color.LightGray)
+                }
+            },
+            containerColor = Color(0xFF141820),
+            shape = RoundedCornerShape(16.dp)
+        )
+    }
+}
+
+@Composable
+fun EnergyHistoryDialog(
+    historyList: List<DailyEnergyRecord>,
+    todayRecord: DailyEnergyRecord,
+    bank: TotalBankData = TotalBankData(),
+    onDismiss: () -> Unit
+) {
+    EnergyHistoryScreen(
+        historyList = historyList,
+        todayRecord = todayRecord,
+        bank = bank,
+        onBack = onDismiss
+    )
 }
 
 @Composable
