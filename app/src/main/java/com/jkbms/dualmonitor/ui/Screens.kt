@@ -52,6 +52,8 @@ fun DashboardScreen(
     val bank by manager.totalBankState.collectAsState()
     val todayEnergy by manager.energyHistory.todayEnergy.collectAsState()
     val historyList by manager.energyHistory.historyList.collectAsState()
+    val electricityPricePerKwh by manager.energyHistory.electricityPricePerKwh.collectAsState()
+    val currencySymbol by manager.energyHistory.currencySymbol.collectAsState()
     val blePaused by manager.blePaused.collectAsState()
     val bleRemainingSec by manager.bleRemainingSec.collectAsState()
     val isGatewayConnected by manager.isGatewayMode.collectAsState()
@@ -251,6 +253,8 @@ fun DashboardScreen(
             record = todayEnergy,
             historyList = historyList,
             bank = bank,
+            electricityPricePerKwh = electricityPricePerKwh,
+            currencySymbol = currencySymbol,
             onViewHistory = onViewHistory
         )
 
@@ -521,6 +525,8 @@ fun TodayEnergyCard(
     record: DailyEnergyRecord,
     historyList: List<DailyEnergyRecord> = emptyList(),
     bank: TotalBankData = TotalBankData(),
+    electricityPricePerKwh: Float = 12.0f,
+    currencySymbol: String = "₱",
     onViewHistory: () -> Unit
 ) {
     Card(
@@ -595,6 +601,16 @@ fun TodayEnergyCard(
                         fontFamily = FontFamily.Monospace,
                         textAlign = TextAlign.End
                     )
+                    if (record.dischargedKwh > 0.005f) {
+                        Text(
+                            String.format(Locale.US, "(%s%.2f saved)", currencySymbol, record.dischargedKwh * electricityPricePerKwh),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF64FFDA),
+                            fontFamily = FontFamily.Monospace,
+                            textAlign = TextAlign.End
+                        )
+                    }
                 }
             }
 
@@ -962,13 +978,19 @@ fun EnergyHistoryScreen(
     val todayRecord by manager.energyHistory.todayEnergy.collectAsState()
     val bank by manager.totalBankState.collectAsState()
     val billingCycleStartDay by manager.energyHistory.billingCycleStartDay.collectAsState()
+    val electricityPricePerKwh by manager.energyHistory.electricityPricePerKwh.collectAsState()
+    val currencySymbol by manager.energyHistory.currencySymbol.collectAsState()
 
     EnergyHistoryScreen(
         historyList = historyList,
         todayRecord = todayRecord,
         bank = bank,
         billingCycleStartDay = billingCycleStartDay,
+        electricityPricePerKwh = electricityPricePerKwh,
+        currencySymbol = currencySymbol,
         onUpdateBillingCycleStartDay = { day -> manager.energyHistory.setBillingCycleStartDay(day) },
+        onUpdateElectricityPrice = { price -> manager.energyHistory.setElectricityPricePerKwh(price) },
+        onUpdateCurrencySymbol = { symbol -> manager.energyHistory.setCurrencySymbol(symbol) },
         onBack = onBack
     )
 }
@@ -979,7 +1001,11 @@ fun EnergyHistoryScreen(
     todayRecord: DailyEnergyRecord,
     bank: TotalBankData = TotalBankData(),
     billingCycleStartDay: Int = 10,
+    electricityPricePerKwh: Float = 12.0f,
+    currencySymbol: String = "₱",
     onUpdateBillingCycleStartDay: (Int) -> Unit = {},
+    onUpdateElectricityPrice: (Float) -> Unit = {},
+    onUpdateCurrencySymbol: (String) -> Unit = {},
     onBack: () -> Unit
 ) {
     val nowCal = remember { Calendar.getInstance() }
@@ -1167,21 +1193,39 @@ fun EnergyHistoryScreen(
                     }
                 }
 
-                // Cutoff Setting Button (quick configure)
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF162232))
-                        .border(1.dp, Color(0xFF2979FF).copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                        .clickable { showCutoffDialog = true }
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                ) {
-                    Text(
-                        text = "CUTOFF: ${billingCycleStartDay}${getDaySuffix(billingCycleStartDay)} ⚙️",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF90CAF9)
-                    )
+                // Billing & Rate Configuration Buttons
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF162232))
+                            .border(1.dp, Color(0xFF2979FF).copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                            .clickable { showCutoffDialog = true }
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "CUTOFF: ${billingCycleStartDay}${getDaySuffix(billingCycleStartDay)}",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF90CAF9)
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF14291E))
+                            .border(1.dp, Color(0xFF00E676).copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                            .clickable { showCutoffDialog = true }
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "${currencySymbol}${String.format(Locale.US, "%.2f", electricityPricePerKwh)} ⚙️",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF64FFDA)
+                        )
+                    }
                 }
             }
 
@@ -1399,6 +1443,104 @@ fun EnergyHistoryScreen(
                                     color = Color(0xFFFFCC80),
                                     fontFamily = FontFamily.Monospace
                                 )
+                            }
+                        }
+                    }
+
+                    // 3b. Estimated Cost Savings (Battery Load Discharged Basis)
+                    val totalCostSaved = totalDischargedKwh * electricityPricePerKwh
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF13281E))
+                            .border(1.dp, Color(0xFF00E676).copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                            .clickable { showCutoffDialog = true }
+                            .padding(12.dp)
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "💰 ESTIMATED COST SAVINGS",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFF81C784),
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.5.sp
+                                )
+                                Text(
+                                    text = "@ ${currencySymbol}${String.format(Locale.US, "%.2f", electricityPricePerKwh)}/kWh ⚙️",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF64FFDA),
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.Bottom
+                            ) {
+                                Column {
+                                    Text(
+                                        text = "${currencySymbol} ${String.format(Locale.US, "%,.2f", totalCostSaved)}",
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFF00E676),
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                    Text(
+                                        text = "Saved by Battery Load Offset (${formatEnergy(totalDischargedKwh, "-")})",
+                                        fontSize = 10.sp,
+                                        color = Color(0xFFA5D6A7)
+                                    )
+                                }
+
+                                if (activeDaysCount > 0) {
+                                    val dailyAvgSavings = totalCostSaved / activeDaysCount
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text(
+                                            text = "DAILY AVERAGE",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.Gray
+                                        )
+                                        Text(
+                                            text = "${currencySymbol}${String.format(Locale.US, "%.2f", dailyAvgSavings)}/day",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF64FFDA),
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (isBillingCycleMode && billingCycleInfo.isCurrentCycle && activeDaysCount > 0 && billingCycleInfo.days.isNotEmpty()) {
+                                val cycleLength = billingCycleInfo.days.size
+                                val projectedSavings = (totalCostSaved / activeDaysCount) * cycleLength
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "Projected for ${cycleLength}-day cycle:",
+                                        fontSize = 10.sp,
+                                        color = Color(0xFF90A4AE)
+                                    )
+                                    Text(
+                                        text = "~${currencySymbol}${String.format(Locale.US, "%,.2f", projectedSavings)}",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF64FFDA),
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
                             }
                         }
                     }
@@ -1646,6 +1788,16 @@ fun EnergyHistoryScreen(
                                                 fontFamily = FontFamily.Monospace,
                                                 textAlign = TextAlign.End
                                             )
+                                            if (item.dischargedKwh > 0.005f) {
+                                                Text(
+                                                    text = String.format(Locale.US, "(%s%.2f saved)", currencySymbol, item.dischargedKwh * electricityPricePerKwh),
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF64FFDA),
+                                                    fontFamily = FontFamily.Monospace,
+                                                    textAlign = TextAlign.End
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -1690,6 +1842,25 @@ fun EnergyHistoryScreen(
                                                 color = if (item.netKwh >= 0) Color(0xFF00E676) else Color(0xFFFF9100)
                                             )
                                         }
+                                        if (item.dischargedKwh > 0.005f) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(
+                                                    text = "Cost Saved (Load Offset):",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = Color(0xFF81C784)
+                                                )
+                                                Text(
+                                                    text = "${currencySymbol}${String.format(Locale.US, "%.2f", item.dischargedKwh * electricityPricePerKwh)}",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF00E676),
+                                                    fontFamily = FontFamily.Monospace
+                                                )
+                                            }
+                                        }
                                     }
                                 }
 
@@ -1707,70 +1878,176 @@ fun EnergyHistoryScreen(
         }
     }
 
-    // Billing Cutoff Configuration Dialog
+    // Billing & Tariff Settings Dialog
     if (showCutoffDialog) {
         var tempDay by remember { mutableStateOf(billingCycleStartDay) }
+        var tempRate by remember { mutableStateOf(electricityPricePerKwh) }
+        var tempSymbol by remember { mutableStateOf(currencySymbol) }
+        val dialogScrollState = rememberScrollState()
+
         AlertDialog(
             onDismissRequest = { showCutoffDialog = false },
             title = {
                 Column {
-                    Text("Billing Cycle Cutoff Day", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Billing & Tariff Settings", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        "Set the day of the month your electricity bill starts. Energy data will be aligned to your exact billing period.",
+                        "Set your electricity rate and billing cutoff day to accurately compute money saved from battery usage.",
                         color = Color.Gray,
                         fontSize = 12.sp
                     )
                 }
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(
-                            onClick = { if (tempDay > 1) tempDay-- },
-                            modifier = Modifier.background(Color(0xFF1E2838), CircleShape)
-                        ) {
-                            Text("−", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                        }
+                Column(
+                    modifier = Modifier.verticalScroll(dialogScrollState),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // SECTION 1: Electricity Rate
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            text = "Starts ${tempDay}${getDaySuffix(tempDay)}",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF64FFDA),
-                            modifier = Modifier.padding(horizontal = 16.dp)
+                            "ELECTRICITY PRICE PER KWH",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF80CBC4),
+                            letterSpacing = 0.5.sp
                         )
-                        IconButton(
-                            onClick = { if (tempDay < 28) tempDay++ },
-                            modifier = Modifier.background(Color(0xFF1E2838), CircleShape)
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("+", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            IconButton(
+                                onClick = { if (tempRate >= 0.5f) tempRate = (tempRate - 0.5f).coerceAtLeast(0f) },
+                                modifier = Modifier.background(Color(0xFF1E2838), CircleShape)
+                            ) {
+                                Text("−", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Text(
+                                text = "${tempSymbol} ${String.format(Locale.US, "%.2f", tempRate)}",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFF00E676),
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                                fontFamily = FontFamily.Monospace
+                            )
+                            IconButton(
+                                onClick = { tempRate = (tempRate + 0.5f).coerceAtMost(100f) },
+                                modifier = Modifier.background(Color(0xFF1E2838), CircleShape)
+                            ) {
+                                Text("+", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Text("Rate Presets:", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            listOf(9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f).forEach { r ->
+                                val isSelected = kotlin.math.abs(tempRate - r) < 0.05f
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (isSelected) Color(0xFF00E676) else Color(0xFF222B38))
+                                        .clickable { tempRate = r }
+                                        .padding(horizontal = 7.dp, vertical = 5.dp)
+                                ) {
+                                    Text(
+                                        text = "${r.toInt()}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSelected) Color.Black else Color.White
+                                    )
+                                }
+                            }
+                        }
+
+                        Text("Currency Symbol:", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf("₱", "$", "€", "£").forEach { sym ->
+                                val isSelected = tempSymbol == sym
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (isSelected) Color(0xFF64FFDA) else Color(0xFF222B38))
+                                        .clickable { tempSymbol = sym }
+                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = sym,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSelected) Color.Black else Color.White
+                                    )
+                                }
+                            }
                         }
                     }
 
-                    Text("Quick Presets:", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        listOf(1, 5, 10, 15, 20, 25).forEach { d ->
-                            val isSelected = tempDay == d
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(if (isSelected) Color(0xFF00E676) else Color(0xFF222B38))
-                                    .clickable { tempDay = d }
-                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                    HorizontalDivider(color = Color(0xFF263238), thickness = 1.dp)
+
+                    // SECTION 2: Billing Cutoff Day
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "BILLING CYCLE CUTOFF DAY",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF90CAF9),
+                            letterSpacing = 0.5.sp
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(
+                                onClick = { if (tempDay > 1) tempDay-- },
+                                modifier = Modifier.background(Color(0xFF1E2838), CircleShape)
                             ) {
-                                Text(
-                                    text = "${d}${getDaySuffix(d)}",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isSelected) Color.Black else Color.White
-                                )
+                                Text("−", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Text(
+                                text = "Starts ${tempDay}${getDaySuffix(tempDay)}",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFF90CAF9),
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
+                            IconButton(
+                                onClick = { if (tempDay < 28) tempDay++ },
+                                modifier = Modifier.background(Color(0xFF1E2838), CircleShape)
+                            ) {
+                                Text("+", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Text("Day Presets:", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            listOf(1, 5, 10, 15, 20, 25).forEach { d ->
+                                val isSelected = tempDay == d
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (isSelected) Color(0xFF2979FF) else Color(0xFF222B38))
+                                        .clickable { tempDay = d }
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "${d}${getDaySuffix(d)}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSelected) Color.White else Color.LightGray
+                                    )
+                                }
                             }
                         }
                     }
@@ -1780,11 +2057,13 @@ fun EnergyHistoryScreen(
                 Button(
                     onClick = {
                         onUpdateBillingCycleStartDay(tempDay)
+                        onUpdateElectricityPrice(tempRate)
+                        onUpdateCurrencySymbol(tempSymbol)
                         showCutoffDialog = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676))
                 ) {
-                    Text("SAVE CUTOFF", color = Color.Black, fontWeight = FontWeight.Bold)
+                    Text("SAVE SETTINGS", color = Color.Black, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {

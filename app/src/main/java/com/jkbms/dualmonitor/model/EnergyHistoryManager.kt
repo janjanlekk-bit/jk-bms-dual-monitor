@@ -38,6 +38,24 @@ class EnergyHistoryManager(
         prefs.edit().putInt("billing_cycle_start_day", clamped).apply()
     }
 
+    private val _electricityPricePerKwh = MutableStateFlow(prefs.getFloat("electricity_price_per_kwh", 12.0f))
+    val electricityPricePerKwh: StateFlow<Float> = _electricityPricePerKwh.asStateFlow()
+
+    fun setElectricityPricePerKwh(price: Float) {
+        val valid = price.coerceAtLeast(0f)
+        _electricityPricePerKwh.value = valid
+        prefs.edit().putFloat("electricity_price_per_kwh", valid).apply()
+    }
+
+    private val _currencySymbol = MutableStateFlow(prefs.getString("currency_symbol", "₱") ?: "₱")
+    val currencySymbol: StateFlow<String> = _currencySymbol.asStateFlow()
+
+    fun setCurrencySymbol(symbol: String) {
+        val trimmed = symbol.trim().ifBlank { "₱" }
+        _currencySymbol.value = trimmed
+        prefs.edit().putString("currency_symbol", trimmed).apply()
+    }
+
     // Internal daily state
     private var currentDate: String = ""
     private var b1StartRemainingAh: Float = 0f
