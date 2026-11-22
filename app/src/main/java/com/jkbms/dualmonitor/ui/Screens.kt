@@ -1,6 +1,7 @@
 package com.jkbms.dualmonitor.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,7 +19,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -39,6 +44,26 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+
+// ===== JK Monitor Design System v2 =====
+private val BgPrimary      = Color(0xFF0B0F1A)
+private val BgCard         = Color(0xFF111827)
+private val BgCardAlt      = Color(0xFF0D1526)
+private val AccentBlue     = Color(0xFF2979FF)
+private val AccentBlueL    = Color(0xFF82B1FF)
+private val SolarGreen     = Color(0xFF00C853)
+private val SolarGreenL    = Color(0xFFA5D6A7)
+private val LoadOrange     = Color(0xFFFF6D00)
+private val LoadOrangeL    = Color(0xFFFFCC80)
+private val CautionYellow  = Color(0xFFFFD600)
+private val ErrorRed       = Color(0xFFFF1744)
+private val TextPrimary    = Color(0xFFE8EAED)
+private val TextSecondary  = Color(0xFF8F9BB3)
+private val TextMuted      = Color(0xFF4A5568)
+private val DividerColor   = Color(0xFF1E2D45)
+private val CardBorder     = Color(0xFF1E3A5F)
+private val CardBorderGreen= Color(0xFF1B4332)
+private val CardBorderOrange=Color(0xFF4A2008)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -99,33 +124,34 @@ fun DashboardScreen(
                     .clickable { showGatewaySettingsDialog = true }
                     .padding(vertical = 4.dp)
             ) {
-                Text("JK DUAL MONITOR", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("JK DUAL MONITOR", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = TextPrimary, letterSpacing = 0.5.sp)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     Box(
                         modifier = Modifier
-                            .size(7.dp)
+                            .size(6.dp)
                             .background(
                                 when (connectionMode) {
-                                    GatewayConnectionMode.LOCAL_WIFI -> Color(0xFF00E676)
-                                    GatewayConnectionMode.FIREBASE_CLOUD -> Color(0xFF29B6F6)
-                                    GatewayConnectionMode.OFFLINE -> Color(0xFFFF5252)
+                                    GatewayConnectionMode.LOCAL_WIFI -> SolarGreen
+                                    GatewayConnectionMode.FIREBASE_CLOUD -> AccentBlue
+                                    GatewayConnectionMode.OFFLINE -> ErrorRed
                                 },
                                 CircleShape
                             )
                     )
                     Text(
                         text = when (connectionMode) {
-                            GatewayConnectionMode.LOCAL_WIFI -> "ESP32 WI-FI GATEWAY (LOCAL)"
-                            GatewayConnectionMode.FIREBASE_CLOUD -> "ESP32 CLOUD ONLINE (FIREBASE)"
-                            GatewayConnectionMode.OFFLINE -> "ESP32 GATEWAY OFFLINE (UNREACHABLE)"
+                            GatewayConnectionMode.LOCAL_WIFI -> "LOCAL WI-FI"
+                            GatewayConnectionMode.FIREBASE_CLOUD -> "CLOUD (FIREBASE)"
+                            GatewayConnectionMode.OFFLINE -> "GATEWAY OFFLINE"
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = when (connectionMode) {
-                            GatewayConnectionMode.LOCAL_WIFI -> Color(0xFF00E676)
-                            GatewayConnectionMode.FIREBASE_CLOUD -> Color(0xFF29B6F6)
-                            GatewayConnectionMode.OFFLINE -> Color(0xFFFF5252)
+                            GatewayConnectionMode.LOCAL_WIFI -> SolarGreen
+                            GatewayConnectionMode.FIREBASE_CLOUD -> AccentBlueL
+                            GatewayConnectionMode.OFFLINE -> ErrorRed
                         },
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
                     )
                 }
             }
@@ -141,8 +167,8 @@ fun DashboardScreen(
 
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF141C26)),
-            border = BorderStroke(1.dp, Color(0xFF263238)),
+            colors = CardDefaults.cardColors(containerColor = BgCardAlt),
+            border = BorderStroke(1.dp, DividerColor),
             shape = RoundedCornerShape(12.dp)
         ) {
             Row(
@@ -150,6 +176,7 @@ fun DashboardScreen(
                 horizontalArrangement = Arrangement.SpaceAround
             ) {
                 StatusBadge(label = "BATTERY 1", status = b1.connectionStatus)
+                Box(modifier = Modifier.width(1.dp).height(16.dp).background(DividerColor))
                 StatusBadge(label = "BATTERY 2", status = b2.connectionStatus)
             }
         }
@@ -265,28 +292,28 @@ fun DashboardScreen(
             onInspectB2 = { onInspectCells(b2) }
         )
 
-        // ESP32 Wi-Fi Gateway Card & Bluetooth Release Control placed at the VERY BOTTOM
         Card(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { showGatewaySettingsDialog = true },
             colors = CardDefaults.cardColors(
                 containerColor = when {
-                    connectionMode == GatewayConnectionMode.OFFLINE -> Color(0xFF2E1A1A)
-                    blePaused -> Color(0xFF3E2723)
-                    connectionMode == GatewayConnectionMode.FIREBASE_CLOUD -> Color(0xFF0F1E2E)
-                    else -> Color(0xFF14241A)
+                    connectionMode == GatewayConnectionMode.OFFLINE -> Color(0xFF1F0A0A)
+                    blePaused -> Color(0xFF1A1200)
+                    connectionMode == GatewayConnectionMode.FIREBASE_CLOUD -> Color(0xFF0A1526)
+                    else -> Color(0xFF0A1A12)
                 }
             ),
             border = BorderStroke(
                 1.dp,
                 when {
-                    connectionMode == GatewayConnectionMode.OFFLINE -> Color(0xFFFF5252).copy(alpha = 0.5f)
-                    blePaused -> Color(0xFFFF5722)
-                    connectionMode == GatewayConnectionMode.FIREBASE_CLOUD -> Color(0xFF29B6F6).copy(alpha = 0.5f)
-                    else -> Color(0xFF00E676).copy(alpha = 0.3f)
+                    connectionMode == GatewayConnectionMode.OFFLINE -> ErrorRed.copy(alpha = 0.4f)
+                    blePaused -> CautionYellow.copy(alpha = 0.4f)
+                    connectionMode == GatewayConnectionMode.FIREBASE_CLOUD -> AccentBlue.copy(alpha = 0.3f)
+                    else -> SolarGreen.copy(alpha = 0.25f)
                 }
-            )
+            ),
+            shape = RoundedCornerShape(12.dp)
         ) {
             Row(
                 modifier = Modifier.padding(14.dp).fillMaxWidth(),
@@ -298,10 +325,10 @@ fun DashboardScreen(
                         Box(
                             modifier = Modifier.size(8.dp).background(
                                 when {
-                                    connectionMode == GatewayConnectionMode.OFFLINE -> Color(0xFFFF5252)
-                                    blePaused -> Color(0xFFFF5722)
-                                    connectionMode == GatewayConnectionMode.FIREBASE_CLOUD -> Color(0xFF29B6F6)
-                                    else -> Color(0xFF00E676)
+                                    connectionMode == GatewayConnectionMode.OFFLINE -> ErrorRed
+                                    blePaused -> CautionYellow
+                                    connectionMode == GatewayConnectionMode.FIREBASE_CLOUD -> AccentBlue
+                                    else -> SolarGreen
                                 },
                                 CircleShape
                             )
@@ -310,46 +337,48 @@ fun DashboardScreen(
                             text = when {
                                 connectionMode == GatewayConnectionMode.OFFLINE -> "ESP32 GATEWAY OFFLINE"
                                 blePaused -> "BLE RELEASED (${bleRemainingSec / 60}:${String.format("%02d", bleRemainingSec % 60)})"
-                                connectionMode == GatewayConnectionMode.FIREBASE_CLOUD -> "ESP32 CLOUD SYNCED (FIREBASE)"
-                                else -> "ESP32 AUTONOMOUS GATEWAY"
+                                connectionMode == GatewayConnectionMode.FIREBASE_CLOUD -> "CLOUD SYNC ACTIVE"
+                                else -> "GATEWAY ONLINE"
                             },
                             style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
+                            fontWeight = FontWeight.ExtraBold,
                             color = when {
-                                connectionMode == GatewayConnectionMode.OFFLINE -> Color(0xFFFF8A80)
-                                blePaused -> Color(0xFFFFAB91)
-                                connectionMode == GatewayConnectionMode.FIREBASE_CLOUD -> Color(0xFF81D4FA)
-                                else -> Color(0xFFA5D6A7)
-                            }
+                                connectionMode == GatewayConnectionMode.OFFLINE -> ErrorRed
+                                blePaused -> CautionYellow
+                                connectionMode == GatewayConnectionMode.FIREBASE_CLOUD -> AccentBlueL
+                                else -> SolarGreen
+                            },
+                            letterSpacing = 0.5.sp
                         )
                     }
                     Text(
                         text = when {
-                            connectionMode == GatewayConnectionMode.OFFLINE -> "Unreachable over Wi-Fi • Check ESP32 power"
+                            connectionMode == GatewayConnectionMode.OFFLINE -> "Unreachable · Check ESP32 power"
                             blePaused -> "Official JK app can connect now"
-                            connectionMode == GatewayConnectionMode.FIREBASE_CLOUD -> "Remote Monitoring Active • Firebase RTDB"
-                            else -> "24/7 Logging Active • Local Wi-Fi Mode"
+                            connectionMode == GatewayConnectionMode.FIREBASE_CLOUD -> "Remote Monitoring · Firebase RTDB"
+                            else -> "24/7 Logging Active · Local Wi-Fi"
                         },
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color.LightGray
+                        color = TextMuted
                     )
                 }
                 if (blePaused) {
                     Button(
                         onClick = { manager.resumeBle() },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676)),
-                        shape = RoundedCornerShape(6.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = SolarGreen),
+                        shape = RoundedCornerShape(8.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                     ) {
-                        Text("RESUME", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        Text("RESUME", color = Color.Black, fontWeight = FontWeight.ExtraBold, fontSize = 11.sp)
                     }
                 } else if (connectionMode != GatewayConnectionMode.OFFLINE) {
                     OutlinedButton(
                         onClick = { manager.releaseBle(600) },
-                        shape = RoundedCornerShape(6.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        border = BorderStroke(1.dp, AccentBlue.copy(alpha = 0.5f))
                     ) {
-                        Text("RELEASE BLE (10m)", color = Color(0xFF90CAF9), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        Text("RELEASE BLE (10m)", color = AccentBlueL, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -411,15 +440,19 @@ fun DashboardScreen(
 @Composable
 fun StatusBadge(label: String, status: ConnectionStatus) {
     val (dotColor, text) = when (status) {
-        ConnectionStatus.CONNECTED -> Color(0xFF00E676) to "ONLINE"
-        ConnectionStatus.CONNECTING, ConnectionStatus.DISCOVERING_SERVICES, ConnectionStatus.ENABLING_NOTIFICATIONS -> Color(0xFFFFD600) to "CONNECTING"
-        ConnectionStatus.RECONNECTING -> Color(0xFFFF9100) to "RECONNECTING"
-        else -> Color(0xFFFF1744) to "OFFLINE"
+        ConnectionStatus.CONNECTED -> SolarGreen to "ONLINE"
+        ConnectionStatus.CONNECTING, ConnectionStatus.DISCOVERING_SERVICES,
+        ConnectionStatus.ENABLING_NOTIFICATIONS -> CautionYellow to "CONNECTING"
+        ConnectionStatus.RECONNECTING -> LoadOrange to "RECONNECTING"
+        else -> ErrorRed to "OFFLINE"
     }
 
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("●", color = dotColor, fontSize = 12.sp)
-        Text("$label: $text", color = Color.LightGray, style = MaterialTheme.typography.labelMedium)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        Box(modifier = Modifier.size(7.dp).background(dotColor, CircleShape))
+        Text("$label: $text", color = TextSecondary, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -442,81 +475,284 @@ fun TotalBankCard(bank: TotalBankData) {
     }
 
     val powerColor = when {
-        isCharging -> Color(0xFF00E676)   // Green (Solar charging)
-        isDischarging -> Color(0xFFFF9100) // Orange (Load discharging)
-        else -> Color.White
-    }
-
-    val currentColor = when {
-        isCharging -> Color(0xFF00E676)
-        isDischarging -> Color(0xFFFF9100)
-        else -> Color.White
+        isCharging   -> SolarGreen
+        isDischarging-> LoadOrange
+        else         -> TextPrimary
     }
 
     val totalCurrentDisplay = when {
         kotlin.math.abs(bank.current) < 0.05f -> "0.0 A"
-        isCharging -> String.format(Locale.US, "+%.1f A", kotlin.math.abs(bank.current))
-        isDischarging -> String.format(Locale.US, "-%.1f A", kotlin.math.abs(bank.current))
-        else -> String.format(Locale.US, "%.1f A", bank.current)
+        isCharging   -> String.format(Locale.US, "+%.1f A", kotlin.math.abs(bank.current))
+        isDischarging-> String.format(Locale.US, "-%.1f A", kotlin.math.abs(bank.current))
+        else         -> String.format(Locale.US, "%.1f A", bank.current)
+    }
+
+    val soc = bank.capacityWeightedSoc.coerceIn(0, 100)
+    val socColor = when {
+        soc >= 70 -> SolarGreen
+        soc >= 40 -> CautionYellow
+        else      -> ErrorRed
     }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF14243B)),
-        border = BorderStroke(1.dp, Color(0xFF2979FF).copy(alpha = 0.5f)),
-        shape = RoundedCornerShape(12.dp)
+        colors = CardDefaults.cardColors(containerColor = BgCard),
+        border = BorderStroke(1.dp, AccentBlue.copy(alpha = 0.3f)),
+        shape = RoundedCornerShape(16.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("TOTAL BATTERY BANK", style = MaterialTheme.typography.titleMedium, color = Color(0xFF90CAF9), fontWeight = FontWeight.Bold)
+            // Header row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        "BATTERY BANK",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextSecondary,
+                        letterSpacing = 1.5.sp
+                    )
+                    Text(
+                        "Total System Status",
+                        fontSize = 12.sp,
+                        color = TextMuted
+                    )
+                }
+                // Status pill
+                val statusText = when {
+                    isCharging    -> "CHARGING"
+                    isDischarging -> "DISCHARGING"
+                    else          -> "STANDBY"
+                }
+                Box(
+                    modifier = Modifier
+                        .background(
+                            when {
+                                isCharging    -> SolarGreen.copy(alpha = 0.15f)
+                                isDischarging -> LoadOrange.copy(alpha = 0.15f)
+                                else          -> AccentBlue.copy(alpha = 0.15f)
+                            },
+                            RoundedCornerShape(20.dp)
+                        )
+                        .padding(horizontal = 12.dp, vertical = 5.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .background(
+                                    when {
+                                        isCharging    -> SolarGreen
+                                        isDischarging -> LoadOrange
+                                        else          -> AccentBlue
+                                    },
+                                    CircleShape
+                                )
+                        )
+                        Text(
+                            statusText,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = when {
+                                isCharging    -> SolarGreen
+                                isDischarging -> LoadOrange
+                                else          -> AccentBlue
+                            },
+                            letterSpacing = 0.8.sp
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Main content: SOC gauge + right metrics
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // LEFT: Circular SOC Arc Gauge
+                Box(
+                    modifier = Modifier.size(130.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val strokeWidth = 14.dp.toPx()
+                        val radius = (size.minDimension - strokeWidth) / 2f
+                        val cx = size.width / 2f
+                        val cy = size.height / 2f
+                        val startAngle = 135f
+                        val sweepMax = 270f
+
+                        // Track arc (background)
+                        drawArc(
+                            color = Color(0xFF1E2D45),
+                            startAngle = startAngle,
+                            sweepAngle = sweepMax,
+                            useCenter = false,
+                            topLeft = Offset(cx - radius, cy - radius),
+                            size = Size(radius * 2, radius * 2),
+                            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                        )
+
+                        // Value arc (SOC fill)
+                        val fillSweep = sweepMax * (soc / 100f)
+                        if (fillSweep > 0f) {
+                            drawArc(
+                                color = when {
+                                    soc >= 70 -> SolarGreen
+                                    soc >= 40 -> CautionYellow
+                                    else      -> ErrorRed
+                                },
+                                startAngle = startAngle,
+                                sweepAngle = fillSweep,
+                                useCenter = false,
+                                topLeft = Offset(cx - radius, cy - radius),
+                                size = Size(radius * 2, radius * 2),
+                                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                            )
+                        }
+
+                        // Inner glow ring
+                        drawCircle(
+                            color = Color(0xFF0D1526),
+                            radius = radius - strokeWidth / 2f - 4.dp.toPx()
+                        )
+                    }
+                    // Center text
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            "$soc",
+                            fontSize = 34.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = socColor,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Text(
+                            "% SOC",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextSecondary,
+                            letterSpacing = 1.sp
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                // RIGHT: Key metrics in a 2x2 grid
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        MetricItem2(
+                            label = "VOLTAGE",
+                            value = String.format(Locale.US, "%.2f V", bank.voltage),
+                            modifier = Modifier.weight(1f)
+                        )
+                        MetricItem2(
+                            label = "CURRENT",
+                            value = totalCurrentDisplay,
+                            valueColor = powerColor,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        MetricItem2(
+                            label = "POWER",
+                            value = totalPowerDisplay,
+                            valueColor = powerColor,
+                            modifier = Modifier.weight(1f)
+                        )
+                        MetricItem2(
+                            label = "CAPACITY",
+                            value = String.format(Locale.US, "%.1f Ah", bank.remainingCapacityAh),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+            HorizontalDivider(color = DividerColor, thickness = 1.dp)
             Spacer(modifier = Modifier.height(12.dp))
-            Row(modifier = Modifier.fillMaxWidth()) {
-                MetricItem(
-                    label = "BUS VOLTAGE",
-                    value = String.format(Locale.US, "%.2f V", bank.voltage),
-                    modifier = Modifier.weight(1f),
-                    horizontalAlignment = Alignment.Start
-                )
-                MetricItem(
-                    label = "TOTAL CURRENT",
-                    value = totalCurrentDisplay,
-                    valueColor = currentColor,
-                    modifier = Modifier.weight(1f),
-                    horizontalAlignment = Alignment.End
-                )
-            }
-            Spacer(modifier = Modifier.height(10.dp))
-            Row(modifier = Modifier.fillMaxWidth()) {
-                MetricItem(
-                    label = "TOTAL POWER",
-                    value = totalPowerDisplay,
-                    valueColor = powerColor,
-                    modifier = Modifier.weight(1f),
-                    horizontalAlignment = Alignment.Start
-                )
-                MetricItem(
-                    label = "REMAINING CAPACITY",
-                    value = String.format(Locale.US, "%.1f Ah", bank.remainingCapacityAh),
-                    modifier = Modifier.weight(1f),
-                    horizontalAlignment = Alignment.End
-                )
-            }
-            Spacer(modifier = Modifier.height(10.dp))
-            Row(modifier = Modifier.fillMaxWidth()) {
-                MetricItem(
-                    label = "WEIGHTED SOC",
-                    value = "${bank.capacityWeightedSoc} %",
-                    modifier = Modifier.weight(1f),
-                    horizontalAlignment = Alignment.Start
-                )
-                val totalEnergyKwh = (bank.voltage * bank.remainingCapacityAh) / 1000f
-                MetricItem(
-                    label = "STORED ENERGY",
-                    value = String.format(Locale.US, "%.2f kWh", totalEnergyKwh),
-                    modifier = Modifier.weight(1f),
-                    horizontalAlignment = Alignment.End
-                )
+
+            // Bottom row: Stored Energy
+            val totalEnergyKwh = (bank.voltage * bank.remainingCapacityAh) / 1000f
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text("⚡", fontSize = 14.sp)
+                    Column {
+                        Text("STORED ENERGY", fontSize = 10.sp, color = TextSecondary, letterSpacing = 0.8.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            String.format(Locale.US, "%.2f kWh", totalEnergyKwh),
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = AccentBlueL,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+                // SOC bar
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("CHARGE LEVEL", fontSize = 10.sp, color = TextSecondary, letterSpacing = 0.8.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Box(
+                        modifier = Modifier
+                            .width(100.dp)
+                            .height(8.dp)
+                            .background(Color(0xFF1E2D45), RoundedCornerShape(4.dp))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(soc / 100f)
+                                .background(socColor, RoundedCornerShape(4.dp))
+                        )
+                    }
+                }
             }
         }
+    }
+}
+
+// New compact metric item (smaller, for inside the SOC card grid)
+@Composable
+fun MetricItem2(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    valueColor: Color = TextPrimary
+) {
+    Column(modifier = modifier) {
+        Text(
+            label,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold,
+            color = TextMuted,
+            letterSpacing = 0.5.sp
+        )
+        Text(
+            value,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
+            color = valueColor,
+            fontFamily = FontFamily.Monospace
+        )
     }
 }
 
@@ -531,174 +767,194 @@ fun TodayEnergyCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF13222B)),
-        border = BorderStroke(1.dp, Color(0xFF00BFA5).copy(alpha = 0.5f)),
-        shape = RoundedCornerShape(12.dp)
+        colors = CardDefaults.cardColors(containerColor = BgCard),
+        border = BorderStroke(1.dp, SolarGreen.copy(alpha = 0.25f)),
+        shape = RoundedCornerShape(16.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            // Header (without top button)
+            // Header
+            val todayCalStr = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
+            val isNightCycle = record.date.isNotBlank() && record.date != todayCalStr
+            val displayDateText = if (isNightCycle) {
+                "${formatDisplayDate(record.date)} · Overnight Cycle"
+            } else {
+                formatDisplayDate(record.date.ifBlank { "Today" })
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                val todayCalStr = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
-                val isNightCycle = record.date.isNotBlank() && record.date != todayCalStr
-                val displayDateText = if (isNightCycle) {
-                    "${formatDisplayDate(record.date)} • Overnight Load Cycle"
-                } else {
-                    formatDisplayDate(record.date.ifBlank { "Today" })
-                }
                 Column {
                     Text(
-                        if (isNightCycle) "CYCLE ENERGY YIELD & LOAD" else "TODAY'S ENERGY YIELD & LOAD",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color(0xFF64FFDA),
-                        fontWeight = FontWeight.Bold
+                        if (isNightCycle) "ENERGY CYCLE" else "TODAY'S ENERGY",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextSecondary,
+                        letterSpacing = 1.5.sp
                     )
                     Text(
                         displayDateText,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (isNightCycle) Color(0xFFFFB74D) else Color.Gray
+                        fontSize = 12.sp,
+                        color = if (isNightCycle) LoadOrange else TextMuted
                     )
                 }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Charged (Solar) vs Discharged (Load)
-            Row(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
-                    Text("SOLAR CHARGED", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                    Text(
-                        formatEnergy(record.chargedKwh, "+"),
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF00E676),
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Text(
-                        String.format("+%.1f Ah", record.chargedAh),
-                        fontSize = 12.sp,
-                        color = Color(0xFFA5D6A7),
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-                Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
-                    Text("LOAD CONSUMED", style = MaterialTheme.typography.labelSmall, color = Color.Gray, textAlign = TextAlign.End)
-                    Text(
-                        formatEnergy(record.dischargedKwh, "-"),
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFFFF9100),
-                        fontFamily = FontFamily.Monospace,
-                        textAlign = TextAlign.End
-                    )
-                    Text(
-                        String.format("-%.1f Ah", record.dischargedAh),
-                        fontSize = 12.sp,
-                        color = Color(0xFFFFCC80),
-                        fontFamily = FontFamily.Monospace,
-                        textAlign = TextAlign.End
-                    )
-                    if (record.dischargedKwh > 0.005f) {
-                        Text(
-                            String.format(Locale.US, "(%s%.2f saved)", currencySymbol, record.dischargedKwh * electricityPricePerKwh),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF64FFDA),
-                            fontFamily = FontFamily.Monospace,
-                            textAlign = TextAlign.End
-                        )
+                if (isNightCycle) {
+                    Box(
+                        modifier = Modifier
+                            .background(LoadOrange.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text("OVERNIGHT", fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, color = LoadOrange, letterSpacing = 0.5.sp)
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
-            HorizontalDivider(color = Color(0xFF1E353B), thickness = 1.dp)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Solar vs Load - large metric cards side by side
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Solar Charged
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .background(Color(0xFF0A1F12), RoundedCornerShape(12.dp))
+                        .border(1.dp, SolarGreen.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        .padding(12.dp)
+                ) {
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(modifier = Modifier.size(8.dp).background(SolarGreen, CircleShape))
+                            Text("SOLAR", fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, color = SolarGreen, letterSpacing = 1.sp)
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            formatEnergy(record.chargedKwh, "+"),
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = SolarGreen,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Text(
+                            String.format("+%.1f Ah", record.chargedAh),
+                            fontSize = 11.sp,
+                            color = SolarGreenL,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+
+                // Load Consumed
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .background(Color(0xFF1F0F05), RoundedCornerShape(12.dp))
+                        .border(1.dp, LoadOrange.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        .padding(12.dp)
+                ) {
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(modifier = Modifier.size(8.dp).background(LoadOrange, CircleShape))
+                            Text("LOAD", fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, color = LoadOrange, letterSpacing = 1.sp)
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            formatEnergy(record.dischargedKwh, "-"),
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = LoadOrange,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Text(
+                            String.format("-%.1f Ah", record.dischargedAh),
+                            fontSize = 11.sp,
+                            color = LoadOrangeL,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        if (record.dischargedKwh > 0.005f) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                String.format(Locale.US, "%s%.2f saved", currencySymbol, record.dischargedKwh * electricityPricePerKwh),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = AccentBlueL,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(color = DividerColor, thickness = 1.dp)
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Daily SOC Range & Battery Capacity Range
+            // SOC Range row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
-                    Text("DAILY SOC RANGE", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                Column {
+                    Text("SOC RANGE", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextMuted, letterSpacing = 0.8.sp)
                     val socText = if (record.minSoc > 0 || record.maxSoc > 0) {
                         "${record.minSoc}% → ${record.maxSoc}%"
                     } else "—"
-                    Text(
-                        socText,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        fontFamily = FontFamily.Monospace
-                    )
+                    Text(socText, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary, fontFamily = FontFamily.Monospace)
                 }
 
                 val totalCap = when {
                     bank.nominalCapacityAh > 10f -> bank.nominalCapacityAh
-                    bank.remainingCapacityAh > 0f && bank.capacityWeightedSoc > 0 -> {
+                    bank.remainingCapacityAh > 0f && bank.capacityWeightedSoc > 0 ->
                         bank.remainingCapacityAh / (bank.capacityWeightedSoc / 100f)
-                    }
                     else -> 200f
                 }
                 val displayMinAh = when {
                     record.minAh > 0.05f -> record.minAh
-                    record.minSoc > 0 -> (record.minSoc / 100f) * totalCap
-                    else -> 0f
+                    record.minSoc > 0    -> (record.minSoc / 100f) * totalCap
+                    else                 -> 0f
                 }
                 val displayMaxAh = when {
                     record.maxAh > 0.05f -> record.maxAh
-                    record.maxSoc > 0 -> (record.maxSoc / 100f) * totalCap
-                    else -> 0f
+                    record.maxSoc > 0    -> (record.maxSoc / 100f) * totalCap
+                    else                 -> 0f
                 }
-
                 val ahText = when {
                     displayMinAh > 0.05f && displayMaxAh > 0.05f -> {
                         if (kotlin.math.abs(displayMaxAh - displayMinAh) > 0.05f) {
                             String.format(Locale.US, "%.1f → %.1f Ah", displayMinAh, displayMaxAh)
-                        } else {
-                            String.format(Locale.US, "%.1f Ah", displayMinAh)
-                        }
+                        } else String.format(Locale.US, "%.1f Ah", displayMinAh)
                     }
                     displayMaxAh > 0.05f -> String.format(Locale.US, "%.1f Ah", displayMaxAh)
                     displayMinAh > 0.05f -> String.format(Locale.US, "%.1f Ah", displayMinAh)
                     else -> "—"
                 }
 
-                Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
-                    Text("CAPACITY RANGE", style = MaterialTheme.typography.labelSmall, color = Color.Gray, textAlign = TextAlign.End)
-                    Text(
-                        ahText,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFFCFD8DC),
-                        fontFamily = FontFamily.Monospace,
-                        textAlign = TextAlign.End
-                    )
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("CAPACITY RANGE", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = TextMuted, letterSpacing = 0.8.sp)
+                    Text(ahText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = AccentBlueL, fontFamily = FontFamily.Monospace)
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
-            HorizontalDivider(color = Color(0xFF1E353B), thickness = 1.dp)
+            HorizontalDivider(color = DividerColor, thickness = 1.dp)
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Month Bar Graph Preview
-            val monthDays = remember(record, historyList) {
-                buildMonthDays(historyList, record)
-            }
-
+            // Bar chart header
             Text(
-                "${getMonthHeaderTitle()} — DAILY BAR GRAPH",
-                fontSize = 11.sp,
-                color = Color(0xFF80CBC4),
-                fontWeight = FontWeight.Bold
+                "${getMonthHeaderTitle()} — DAILY OVERVIEW",
+                fontSize = 10.sp,
+                color = AccentBlueL,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.5.sp
             )
             Spacer(modifier = Modifier.height(6.dp))
 
+            val monthDays = remember(record, historyList) { buildMonthDays(historyList, record) }
             MonthlyEnergyBarChart(
                 monthDays = monthDays,
                 selectedDate = record.date,
@@ -706,21 +962,21 @@ fun TodayEnergyCard(
                 compact = true
             )
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Button to open full history & monthly logs page
             Button(
                 onClick = onViewHistory,
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B3A36)),
-                border = BorderStroke(1.dp, Color(0xFF00BFA5).copy(alpha = 0.6f)),
-                shape = RoundedCornerShape(8.dp)
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D1E3A)),
+                border = BorderStroke(1.dp, AccentBlue.copy(alpha = 0.5f)),
+                shape = RoundedCornerShape(10.dp)
             ) {
                 Text(
                     "VIEW FULL HISTORY & MONTHLY LOGS",
-                    color = Color(0xFF64FFDA),
+                    color = AccentBlueL,
                     fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.5.sp
                 )
             }
         }
@@ -2179,67 +2435,56 @@ fun CombinedBatteryPacksCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF14202E)),
-        border = BorderStroke(1.dp, Color(0xFF1E88E5).copy(alpha = 0.5f)),
-        shape = RoundedCornerShape(12.dp)
+        colors = CardDefaults.cardColors(containerColor = BgCard),
+        border = BorderStroke(1.dp, CardBorder),
+        shape = RoundedCornerShape(16.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            // Card Title Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "INDIVIDUAL BATTERY PACKS",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF90CAF9)
-                )
-                Text(
-                    text = "PARALLEL 16S",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.Gray,
-                    fontWeight = FontWeight.Bold
-                )
+                Column {
+                    Text(
+                        "BATTERY PACKS",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextSecondary,
+                        letterSpacing = 1.5.sp
+                    )
+                    Text("Parallel 16S LFP", fontSize = 11.sp, color = TextMuted)
+                }
+                Box(
+                    modifier = Modifier
+                        .background(AccentBlue.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text("2 PACKS", fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, color = AccentBlueL, letterSpacing = 1.sp)
+                }
             }
 
-            // Battery 1
-            val b1Title = b1.displayName.ifBlank { "48V 100Ah #1" }.replace(" (24S)", "")
-            BatteryPackRow(
-                bms = b1,
-                title = b1Title,
-                onClick = onInspectB1
-            )
+            val b1Title = b1.displayName.ifBlank { "48V 100Ah #1" }.replace(" (24S)", "").replace(" (20S)", "")
+            BatteryPackRow(bms = b1, title = b1Title, onClick = onInspectB1)
 
-            // Battery 2
-            val b2Title = b2.displayName.ifBlank { "48V 100Ah #2" }.replace(" (20S)", "")
-            BatteryPackRow(
-                bms = b2,
-                title = b2Title,
-                onClick = onInspectB2
-            )
+            val b2Title = b2.displayName.ifBlank { "48V 100Ah #2" }.replace(" (24S)", "").replace(" (20S)", "")
+            BatteryPackRow(bms = b2, title = b2Title, onClick = onInspectB2)
 
-            Spacer(modifier = Modifier.height(2.dp))
-
-            // Single Unified Inspection Button
             Button(
                 onClick = onInspectB1,
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E2838)),
-                border = BorderStroke(1.dp, Color(0xFF00E676).copy(alpha = 0.5f)),
-                shape = RoundedCornerShape(8.dp)
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D1E3A)),
+                border = BorderStroke(1.dp, AccentBlue.copy(alpha = 0.5f)),
+                shape = RoundedCornerShape(10.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("🔍", fontSize = 13.sp)
                     Text(
                         "INSPECT BATTERIES",
-                        color = Color.White,
+                        color = AccentBlueL,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp
+                        fontSize = 12.sp,
+                        letterSpacing = 0.5.sp
                     )
                 }
             }
@@ -2266,82 +2511,113 @@ fun BatteryPackRow(
     }
 
     val powerColor = when {
-        isCharging -> Color(0xFF00E676)
-        isDischarging -> Color(0xFFFF9100)
-        else -> Color.Gray
+        isCharging    -> SolarGreen
+        isDischarging -> LoadOrange
+        else          -> TextMuted
     }
 
     val currentDisplay = when {
         kotlin.math.abs(bms.current) < 0.05f -> "0.0 A"
-        isCharging -> String.format(Locale.US, "+%.1f A", kotlin.math.abs(bms.current))
+        isCharging    -> String.format(Locale.US, "+%.1f A", kotlin.math.abs(bms.current))
         isDischarging -> String.format(Locale.US, "-%.1f A", kotlin.math.abs(bms.current))
-        else -> String.format(Locale.US, "%.1f A", bms.current)
+        else          -> String.format(Locale.US, "%.1f A", bms.current)
     }
+
+    val soc = bms.soc.coerceIn(0, 100)
+    val socColor = when {
+        soc >= 70 -> SolarGreen
+        soc >= 40 -> CautionYellow
+        else      -> ErrorRed
+    }
+
+    val isConnected = bms.connectionStatus == ConnectionStatus.CONNECTED
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
             .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF0E1622)),
-        border = BorderStroke(1.dp, Color(0xFF1C2B3C)),
-        shape = RoundedCornerShape(10.dp)
+        colors = CardDefaults.cardColors(
+            containerColor = if (isConnected) Color(0xFF0D1526) else Color(0xFF1A0E0E)
+        ),
+        border = BorderStroke(
+            1.dp,
+            if (isConnected) CardBorder else ErrorRed.copy(alpha = 0.4f)
+        ),
+        shape = RoundedCornerShape(12.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = Color.White)
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Top row: name, SOC%, connection status
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .background(
+                                when (bms.connectionStatus) {
+                                    ConnectionStatus.CONNECTED -> SolarGreen
+                                    ConnectionStatus.CONNECTING, ConnectionStatus.DISCOVERING_SERVICES,
+                                    ConnectionStatus.ENABLING_NOTIFICATIONS -> CautionYellow
+                                    ConnectionStatus.RECONNECTING -> LoadOrange
+                                    else -> ErrorRed
+                                },
+                                CircleShape
+                            )
+                    )
+                    Text(title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                }
                 Text(
-                    "${bms.soc}%",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
+                    "$soc%",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = socColor,
                     fontFamily = FontFamily.Monospace
                 )
             }
 
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column {
-                    Text(
-                        String.format(Locale.US, "%.2f V", bms.voltage),
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            currentDisplay,
-                            color = Color.Gray,
-                            fontSize = 13.sp,
-                            fontFamily = FontFamily.Monospace
-                        )
-                        Text("•", color = Color.DarkGray, fontSize = 10.sp)
-                        Text(
-                            bmsPowerDisplay,
-                            color = powerColor,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text("Temp: ${bms.temperature}°C", color = Color.LightGray, fontSize = 12.sp)
-                    Text("Active: ${bms.cells.size}S", color = Color.LightGray, fontSize = 12.sp)
-                    Text(
-                        "Cell Delta: ${bms.deltaVoltageMv} mV",
-                        color = if (bms.deltaVoltageMv > 30) Color(0xFFFF5252) else Color(0xFF69F0AE),
-                        fontSize = 12.sp
-                    )
-                }
+            // SOC Progress bar
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .background(Color(0xFF1E2D45), RoundedCornerShape(3.dp))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(soc / 100f)
+                        .background(socColor, RoundedCornerShape(3.dp))
+                )
             }
 
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Min: C${bms.minCellNumber} (${String.format(Locale.US, "%.3f", bms.minCellVoltage)}V)", color = Color.Gray, fontSize = 11.sp)
-                Text("Max: C${bms.maxCellNumber} (${String.format(Locale.US, "%.3f", bms.maxCellVoltage)}V)", color = Color.Gray, fontSize = 11.sp)
+            // Bottom metrics row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    String.format(Locale.US, "%.2f V", bms.voltage),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    fontFamily = FontFamily.Monospace
+                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(currentDisplay, color = TextSecondary, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                    Text("·", color = TextMuted, fontSize = 10.sp)
+                    Text(bmsPowerDisplay, color = powerColor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("${bms.temperature}°C", color = TextSecondary, fontSize = 11.sp)
+                    Text("Δ ${bms.deltaVoltageMv}mV",
+                        color = if (bms.deltaVoltageMv > 30) ErrorRed else SolarGreen,
+                        fontSize = 11.sp, fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
         }
     }
@@ -2352,14 +2628,16 @@ fun MetricItem(
     label: String,
     value: String,
     modifier: Modifier = Modifier,
-    valueColor: Color = Color.White,
+    valueColor: Color = TextPrimary,
     horizontalAlignment: Alignment.Horizontal = Alignment.Start
 ) {
     Column(modifier = modifier, horizontalAlignment = horizontalAlignment) {
         Text(
             text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = Color.Gray,
+            fontSize = 9.sp,
+            color = TextMuted,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.5.sp,
             textAlign = if (horizontalAlignment == Alignment.End) TextAlign.End else TextAlign.Start
         )
         Text(

@@ -4,8 +4,10 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
@@ -19,6 +21,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.jkbms.dualmonitor.ble.BmsConnectionManager
 import com.jkbms.dualmonitor.model.BmsData
 import kotlinx.coroutines.launch
@@ -34,10 +37,11 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme(colorScheme = darkColorScheme(
-                background = Color(0xFF101216),
-                surface = Color(0xFF1A1D24),
-                primary = Color(0xFF00E676),
-                secondary = Color(0xFF2979FF)
+                background = Color(0xFF0B0F1A),
+                surface = Color(0xFF111827),
+                primary = Color(0xFF2979FF),
+                secondary = Color(0xFF00C853),
+                tertiary = Color(0xFFFF6D00)
             )) {
                 var selectedBmsSlot by remember { mutableStateOf<String?>(null) }
                 var showHistoryScreen by remember { mutableStateOf(false) }
@@ -91,15 +95,16 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 16.dp, vertical = 8.dp)
-                                    .background(Color(0xFF141720), RoundedCornerShape(12.dp))
+                                    .background(Color(0xFF0D1526), RoundedCornerShape(12.dp))
+                                    .border(BorderStroke(1.dp, Color(0xFF1E3A5F)), RoundedCornerShape(12.dp))
                                     .padding(4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                val pages = listOf("📊 TELEMETRY", "⚡ ENERGY FLOW")
+                                val pages = listOf("📊  TELEMETRY", "⚡  ENERGY FLOW")
                                 pages.forEachIndexed { index, title ->
                                     val isSelected = pagerState.currentPage == index
-                                    val bgColor = if (isSelected) Color(0xFF263238) else Color.Transparent
-                                    val textColor = if (isSelected) Color(0xFF00E676) else Color(0xFF90A4AE)
+                                    val bgColor = if (isSelected) Color(0xFF2979FF) else Color.Transparent
+                                    val textColor = if (isSelected) Color.White else Color(0xFF8F9BB3)
 
                                     Box(
                                         modifier = Modifier
@@ -118,7 +123,8 @@ class MainActivity : ComponentActivity() {
                                             text = title,
                                             style = MaterialTheme.typography.labelMedium,
                                             fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
-                                            color = textColor
+                                            color = textColor,
+                                            letterSpacing = if (isSelected) 0.5.sp else 0.sp
                                         )
                                     }
                                 }
