@@ -16,10 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
@@ -33,14 +30,29 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jkbms.dualmonitor.ble.BmsConnectionManager
 import com.jkbms.dualmonitor.model.BmsData
-import com.jkbms.dualmonitor.model.ConnectionStatus
 import com.jkbms.dualmonitor.model.DailyEnergyRecord
 import com.jkbms.dualmonitor.model.TotalBankData
 import java.util.Locale
 import kotlin.math.abs
-import kotlin.math.cos
 import kotlin.math.roundToInt
-import kotlin.math.sin
+
+// Design System Constants
+private val BgPrimary      = Color(0xFF0B0F1A)
+private val BgCard         = Color(0xFF111827)
+private val BgCardAlt      = Color(0xFF0D1526)
+private val AccentBlue     = Color(0xFF2979FF)
+private val AccentBlueL    = Color(0xFF82B1FF)
+private val SolarGreen     = Color(0xFF00C853)
+private val SolarGreenL    = Color(0xFFA5D6A7)
+private val LoadOrange     = Color(0xFFFF6D00)
+private val LoadOrangeL    = Color(0xFFFFCC80)
+private val CautionYellow  = Color(0xFFFFD600)
+private val ErrorRed       = Color(0xFFFF1744)
+private val TextPrimary    = Color(0xFFE8EAED)
+private val TextSecondary  = Color(0xFF8F9BB3)
+private val TextMuted      = Color(0xFF4A5568)
+private val DividerColor   = Color(0xFF1E2D45)
+private val CardBorder     = Color(0xFF1E3A5F)
 
 @Composable
 fun EnergyFlowScreen(
@@ -56,6 +68,7 @@ fun EnergyFlowScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(BgPrimary)
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -63,7 +76,7 @@ fun EnergyFlowScreen(
         // 1. Header with Live Status
         EnergyFlowHeader(bank = bank, isGatewayConnected = isGatewayConnected)
 
-        // 2. Animated SolaX-Style Synoptic Energy Flow Diagram
+        // 2. Animated Synoptic Energy Flow Diagram
         EnergyFlowDiagram(
             bank = bank,
             todayEnergy = todayEnergy,
@@ -81,7 +94,7 @@ fun EnergyFlowScreen(
             onInspectB1 = { onInspectCells(b1) },
             onInspectB2 = { onInspectCells(b2) }
         )
-        
+
         Spacer(modifier = Modifier.height(16.dp))
     }
 }
@@ -99,10 +112,10 @@ fun EnergyFlowHeader(bank: TotalBankData, isGatewayConnected: Boolean = true) {
     }
 
     val modeColor = when {
-        !isGatewayConnected -> Color(0xFFFF5252)
-        isCharging -> Color(0xFF00E676)
-        isDischarging -> Color(0xFFFF9100)
-        else -> Color(0xFF2979FF)
+        !isGatewayConnected -> ErrorRed
+        isCharging -> SolarGreen
+        isDischarging -> LoadOrange
+        else -> AccentBlue
     }
 
     Row(
@@ -114,8 +127,9 @@ fun EnergyFlowHeader(bank: TotalBankData, isGatewayConnected: Boolean = true) {
             Text(
                 text = "ENERGY FLOW",
                 style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
+                fontWeight = FontWeight.ExtraBold,
+                color = TextPrimary,
+                letterSpacing = 0.5.sp
             )
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -123,7 +137,7 @@ fun EnergyFlowHeader(bank: TotalBankData, isGatewayConnected: Boolean = true) {
             ) {
                 Box(
                     modifier = Modifier
-                        .size(8.dp)
+                        .size(7.dp)
                         .clip(CircleShape)
                         .background(modeColor)
                 )
@@ -131,7 +145,8 @@ fun EnergyFlowHeader(bank: TotalBankData, isGatewayConnected: Boolean = true) {
                     text = modeTitle,
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
-                    color = modeColor
+                    color = modeColor,
+                    letterSpacing = 0.5.sp
                 )
             }
         }
@@ -178,8 +193,8 @@ fun EnergyFlowDiagram(
         modifier = Modifier
             .fillMaxWidth()
             .height(410.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF131722)),
-        border = BorderStroke(1.dp, Color(0xFF242C3D)),
+        colors = CardDefaults.cardColors(containerColor = BgCard),
+        border = BorderStroke(1.dp, CardBorder),
         shape = RoundedCornerShape(20.dp)
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(12.dp)) {
@@ -193,14 +208,13 @@ fun EnergyFlowDiagram(
 
             // 1. Canvas Layer: Renders Animated Flow Lines & Particles
             Canvas(modifier = Modifier.fillMaxSize()) {
-                // Background Track Lines
-                val baseTrackColor = Color(0xFF1F2839)
+                val baseTrackColor = Color(0xFF1E2D45)
                 val strokeWidthPx = 4.dp.toPx()
                 val dashEffect = PathEffect.dashPathEffect(floatArrayOf(16f, 16f), 0f)
 
                 // Line 1: Solar to Hub
                 drawLine(
-                    color = if (isCharging) Color(0xFF00E676).copy(alpha = 0.35f) else baseTrackColor,
+                    color = if (isCharging) SolarGreen.copy(alpha = 0.35f) else baseTrackColor,
                     start = solarCenter,
                     end = hubCenter,
                     strokeWidth = strokeWidthPx,
@@ -210,7 +224,7 @@ fun EnergyFlowDiagram(
 
                 // Line 2: Hub to Battery
                 drawLine(
-                    color = if (isCharging) Color(0xFF00E676).copy(alpha = 0.35f) else if (isDischarging) Color(0xFFFF9100).copy(alpha = 0.35f) else baseTrackColor,
+                    color = if (isCharging) SolarGreen.copy(alpha = 0.35f) else if (isDischarging) LoadOrange.copy(alpha = 0.35f) else baseTrackColor,
                     start = hubCenter,
                     end = batteryCenter,
                     strokeWidth = strokeWidthPx,
@@ -220,7 +234,7 @@ fun EnergyFlowDiagram(
 
                 // Line 3: Hub to House
                 drawLine(
-                    color = if (isDischarging) Color(0xFFFF9100).copy(alpha = 0.35f) else if (isCharging) Color(0xFF00E676).copy(alpha = 0.25f) else baseTrackColor,
+                    color = if (isDischarging) LoadOrange.copy(alpha = 0.35f) else if (isCharging) SolarGreen.copy(alpha = 0.25f) else baseTrackColor,
                     start = hubCenter,
                     end = houseCenter,
                     strokeWidth = strokeWidthPx,
@@ -235,7 +249,7 @@ fun EnergyFlowDiagram(
                         start = solarCenter,
                         end = hubCenter,
                         progress = flowProgress,
-                        particleColor = Color(0xFF00E676),
+                        particleColor = SolarGreen,
                         count = 4
                     )
                     // Flow B: Hub -> Battery (Down-Left)
@@ -243,7 +257,7 @@ fun EnergyFlowDiagram(
                         start = hubCenter,
                         end = batteryCenter,
                         progress = flowProgress,
-                        particleColor = Color(0xFF00E676),
+                        particleColor = SolarGreen,
                         count = 4
                     )
                 } else if (isDischarging) {
@@ -252,7 +266,7 @@ fun EnergyFlowDiagram(
                         start = batteryCenter,
                         end = hubCenter,
                         progress = flowProgress,
-                        particleColor = Color(0xFFFF9100),
+                        particleColor = LoadOrange,
                         count = 4
                     )
                     // Flow D: Hub -> House (Down-Right)
@@ -260,7 +274,7 @@ fun EnergyFlowDiagram(
                         start = hubCenter,
                         end = houseCenter,
                         progress = flowProgress,
-                        particleColor = Color(0xFFFF9100),
+                        particleColor = LoadOrange,
                         count = 4
                     )
                 }
@@ -283,8 +297,7 @@ fun EnergyFlowDiagram(
 
             // Node 2: Smart DC Bus Hub (Center)
             Box(
-                modifier = Modifier
-                    .fillMaxSize(),
+                modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
                 CenterHubWidget(isCharging = isCharging, isDischarging = isDischarging)
@@ -365,8 +378,8 @@ fun SolarNodeWidget(
     isGenerating: Boolean
 ) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A2234)),
-        border = BorderStroke(1.5.dp, if (isGenerating) Color(0xFF00E676) else Color(0xFF2A364F)),
+        colors = CardDefaults.cardColors(containerColor = BgCardAlt),
+        border = BorderStroke(1.dp, if (isGenerating) SolarGreen.copy(alpha = 0.5f) else CardBorder),
         shape = RoundedCornerShape(16.dp),
         modifier = Modifier.width(170.dp)
     ) {
@@ -383,7 +396,8 @@ fun SolarNodeWidget(
                     text = "SOLAR PV",
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
-                    color = if (isGenerating) Color(0xFF00E676) else Color(0xFF90A4AE)
+                    color = if (isGenerating) SolarGreen else TextSecondary,
+                    letterSpacing = 1.sp
                 )
             }
             Spacer(modifier = Modifier.height(2.dp))
@@ -391,13 +405,14 @@ fun SolarNodeWidget(
                 text = if (isGenerating) formatPower(pvPower) else "0 W",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.ExtraBold,
-                color = if (isGenerating) Color(0xFF00E676) else Color.White
+                color = if (isGenerating) SolarGreen else TextPrimary,
+                fontFamily = FontFamily.Monospace
             )
             Text(
                 text = "Day: ${formatEnergy(todayHarvestKwh)}",
                 style = MaterialTheme.typography.labelSmall,
                 fontSize = 10.sp,
-                color = Color(0xFFCFD8DC)
+                color = TextSecondary
             )
         }
     }
@@ -406,22 +421,22 @@ fun SolarNodeWidget(
 @Composable
 fun CenterHubWidget(isCharging: Boolean, isDischarging: Boolean) {
     val hubColor = when {
-        isCharging -> Color(0xFF00E676)
-        isDischarging -> Color(0xFFFF9100)
-        else -> Color(0xFF2979FF)
+        isCharging -> SolarGreen
+        isDischarging -> LoadOrange
+        else -> AccentBlue
     }
 
     Box(
         modifier = Modifier
             .size(54.dp)
             .clip(CircleShape)
-            .background(Color(0xFF1A2234))
+            .background(BgCardAlt)
             .border(2.dp, hubColor, CircleShape),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text("⚡", fontSize = 18.sp)
-            Text("DC BUS", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = hubColor)
+            Text("DC BUS", fontSize = 8.sp, fontWeight = FontWeight.ExtraBold, color = hubColor, letterSpacing = 0.5.sp)
         }
     }
 }
@@ -434,16 +449,23 @@ fun BatteryNodeWidget(
     isCharging: Boolean,
     isDischarging: Boolean
 ) {
-    val soc = bank.capacityWeightedSoc
+    val soc = bank.capacityWeightedSoc.coerceIn(0, 100)
+    // Updated threshold per user request: Green > 50%, Amber > 10%, Red <= 10%
+    val socColor = when {
+        soc > 50 -> SolarGreen
+        soc > 10 -> CautionYellow
+        else     -> ErrorRed
+    }
+
     val accentColor = when {
-        isCharging -> Color(0xFF00E676)
-        isDischarging -> Color(0xFFFF9100)
-        else -> Color(0xFF2979FF)
+        isCharging -> SolarGreen
+        isDischarging -> LoadOrange
+        else -> AccentBlue
     }
 
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A2234)),
-        border = BorderStroke(1.5.dp, accentColor),
+        colors = CardDefaults.cardColors(containerColor = BgCardAlt),
+        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.5f)),
         shape = RoundedCornerShape(16.dp),
         modifier = Modifier.width(160.dp)
     ) {
@@ -460,7 +482,8 @@ fun BatteryNodeWidget(
                     text = "BATTERY",
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
-                    color = accentColor
+                    color = accentColor,
+                    letterSpacing = 1.sp
                 )
             }
             Spacer(modifier = Modifier.height(2.dp))
@@ -469,12 +492,13 @@ fun BatteryNodeWidget(
                     text = "$soc",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.ExtraBold,
-                    color = Color.White
+                    color = socColor,
+                    fontFamily = FontFamily.Monospace
                 )
                 Text(
                     text = "%",
                     style = MaterialTheme.typography.titleSmall,
-                    color = accentColor,
+                    color = socColor,
                     modifier = Modifier.padding(bottom = 2.dp, start = 2.dp)
                 )
             }
@@ -482,13 +506,15 @@ fun BatteryNodeWidget(
                 text = String.format(Locale.US, "%.1fV • %.1fA", bank.voltage, bank.current),
                 style = MaterialTheme.typography.labelSmall,
                 fontSize = 10.sp,
-                color = Color(0xFFCFD8DC)
+                color = TextSecondary,
+                fontFamily = FontFamily.Monospace
             )
             Text(
                 text = "B1:${b1.soc}% • B2:${b2.soc}%",
                 style = MaterialTheme.typography.labelSmall,
                 fontSize = 9.sp,
-                color = Color(0xFF90A4AE)
+                color = TextMuted,
+                fontFamily = FontFamily.Monospace
             )
         }
     }
@@ -500,11 +526,11 @@ fun HouseNodeWidget(
     todayLoadKwh: Float,
     isConsuming: Boolean
 ) {
-    val accentColor = if (isConsuming) Color(0xFFFF9100) else Color(0xFF2A364F)
+    val accentColor = if (isConsuming) LoadOrange else CardBorder
 
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A2234)),
-        border = BorderStroke(1.5.dp, accentColor),
+        colors = CardDefaults.cardColors(containerColor = BgCardAlt),
+        border = BorderStroke(1.dp, accentColor),
         shape = RoundedCornerShape(16.dp),
         modifier = Modifier.width(160.dp)
     ) {
@@ -521,7 +547,8 @@ fun HouseNodeWidget(
                     text = "HOUSE LOAD",
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
-                    color = if (isConsuming) Color(0xFFFF9100) else Color(0xFF90A4AE)
+                    color = if (isConsuming) LoadOrange else TextSecondary,
+                    letterSpacing = 1.sp
                 )
             }
             Spacer(modifier = Modifier.height(2.dp))
@@ -529,19 +556,20 @@ fun HouseNodeWidget(
                 text = if (isConsuming) formatPower(loadPower) else "0 W",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.ExtraBold,
-                color = if (isConsuming) Color(0xFFFF9100) else Color.White
+                color = if (isConsuming) LoadOrange else TextPrimary,
+                fontFamily = FontFamily.Monospace
             )
             Text(
                 text = "Day: ${formatEnergy(todayLoadKwh)}",
                 style = MaterialTheme.typography.labelSmall,
                 fontSize = 10.sp,
-                color = Color(0xFFCFD8DC)
+                color = TextSecondary
             )
             Text(
-                text = if (isConsuming) "Battery Discharging" else "Solar / Direct Feed",
+                text = if (isConsuming) "Battery Discharging" else "Standby / Floating",
                 style = MaterialTheme.typography.labelSmall,
                 fontSize = 9.sp,
-                color = Color(0xFF90A4AE)
+                color = TextMuted
             )
         }
     }
@@ -554,15 +582,17 @@ fun LivePowerDistributionCard(bank: TotalBankData, todayEnergy: DailyEnergyRecor
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, Color(0xFF262C38))
+        colors = CardDefaults.cardColors(containerColor = BgCard),
+        border = BorderStroke(1.dp, CardBorder),
+        shape = RoundedCornerShape(16.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                text = "POWER MATRIX",
+                text = "POWER DISTRIBUTION",
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF00E676)
+                color = TextSecondary,
+                letterSpacing = 1.sp
             )
             Spacer(modifier = Modifier.height(12.dp))
             Row(
@@ -572,20 +602,20 @@ fun LivePowerDistributionCard(bank: TotalBankData, todayEnergy: DailyEnergyRecor
                 PowerStatItem(
                     label = "SOLAR HARVEST",
                     value = if (isCharging) formatPower(bank.power) else "0 W",
-                    color = Color(0xFF00E676),
-                    sub = "Today: ${formatEnergy(todayEnergy.chargedKwh)}"
+                    color = SolarGreen,
+                    sub = "Day: ${formatEnergy(todayEnergy.chargedKwh)}"
                 )
                 PowerStatItem(
                     label = "BATTERY NET",
                     value = String.format(Locale.US, "%s%.2f kW", if (bank.current > 0.05f) "+" else "", bank.power / 1000f),
-                    color = if (bank.current > 0.05f) Color(0xFF00E676) else if (bank.current < -0.05f) Color(0xFFFF9100) else Color.White,
-                    sub = "${bank.capacityWeightedSoc}% • ${String.format(Locale.US, "%.1f", bank.remainingCapacityAh)}Ah"
+                    color = if (bank.current > 0.05f) SolarGreen else if (bank.current < -0.05f) LoadOrange else TextPrimary,
+                    sub = "${bank.capacityWeightedSoc}% · ${String.format(Locale.US, "%.1f", bank.remainingCapacityAh)}Ah"
                 )
                 PowerStatItem(
                     label = "LOAD FROM BATT",
                     value = if (isDischarging) formatPower(abs(bank.power)) else "0 W",
-                    color = Color(0xFFFF9100),
-                    sub = "Today: ${formatEnergy(todayEnergy.dischargedKwh)}"
+                    color = LoadOrange,
+                    sub = "Day: ${formatEnergy(todayEnergy.dischargedKwh)}"
                 )
             }
         }
@@ -595,11 +625,11 @@ fun LivePowerDistributionCard(bank: TotalBankData, todayEnergy: DailyEnergyRecor
 @Composable
 fun PowerStatItem(label: String, value: String, color: Color, sub: String) {
     Column {
-        Text(text = label, style = MaterialTheme.typography.labelSmall, fontSize = 10.sp, color = Color.Gray)
+        Text(text = label, style = MaterialTheme.typography.labelSmall, fontSize = 9.sp, color = TextMuted, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
         Spacer(modifier = Modifier.height(2.dp))
-        Text(text = value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = color)
+        Text(text = value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = color, fontFamily = FontFamily.Monospace)
         Spacer(modifier = Modifier.height(2.dp))
-        Text(text = sub, style = MaterialTheme.typography.labelSmall, fontSize = 10.sp, color = Color(0xFFCFD8DC))
+        Text(text = sub, style = MaterialTheme.typography.labelSmall, fontSize = 10.sp, color = TextSecondary)
     }
 }
 
@@ -612,15 +642,17 @@ fun ParallelPacksCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, Color(0xFF262C38))
+        colors = CardDefaults.cardColors(containerColor = BgCard),
+        border = BorderStroke(1.dp, CardBorder),
+        shape = RoundedCornerShape(16.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 text = "PARALLEL PACK CONTRIBUTIONS",
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = TextSecondary,
+                letterSpacing = 1.sp
             )
             Spacer(modifier = Modifier.height(12.dp))
             Row(
@@ -639,8 +671,8 @@ fun ParallelPacksCard(
                     50
                 }
 
-                val b1Name = if (b1.displayName.isNotBlank()) b1.displayName.replace(" (24S)", "") else "48V 100Ah #1"
-                val b2Name = if (b2.displayName.isNotBlank()) b2.displayName.replace(" (20S)", "") else "48V 100Ah #2"
+                val b1Name = if (b1.displayName.isNotBlank()) b1.displayName.replace(" (24S)", "").replace(" (20S)", "") else "48V 100Ah #1"
+                val b2Name = if (b2.displayName.isNotBlank()) b2.displayName.replace(" (24S)", "").replace(" (20S)", "") else "48V 100Ah #2"
 
                 PackMiniSummary(
                     modifier = Modifier.weight(1f),
@@ -669,13 +701,21 @@ fun PackMiniSummary(
     sharePercent: Int,
     onInspect: () -> Unit
 ) {
+    val soc = bms.soc.coerceIn(0, 100)
+    // Updated threshold per user request: Green > 50%, Amber > 10%, Red <= 10%
+    val socColor = when {
+        soc > 50 -> SolarGreen
+        soc > 10 -> CautionYellow
+        else     -> ErrorRed
+    }
+
     Card(
         modifier = modifier.clickable { onInspect() },
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF131722)),
-        border = BorderStroke(1.dp, Color(0xFF242C3D)),
+        colors = CardDefaults.cardColors(containerColor = BgCardAlt),
+        border = BorderStroke(1.dp, CardBorder),
         shape = RoundedCornerShape(12.dp)
     ) {
-        Column(modifier = Modifier.padding(10.dp)) {
+        Column(modifier = Modifier.padding(12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -685,57 +725,61 @@ fun PackMiniSummary(
                     text = title,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White,
+                    color = TextPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Surface(
-                    color = Color(0xFF1B2838),
-                    shape = RoundedCornerShape(4.dp)
+                    color = AccentBlue.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(6.dp)
                 ) {
                     Text(
                         text = "$sharePercent% share",
                         fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF00E676),
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                        fontWeight = FontWeight.ExtraBold,
+                        color = AccentBlueL,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "SOC: ${bms.soc}%",
+                    text = "SOC: $soc%",
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFF81C784),
-                    fontWeight = FontWeight.SemiBold
+                    color = socColor,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
                 )
                 Text(
                     text = String.format(Locale.US, "%.0f W", bms.power),
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFF90A4AE)
+                    color = if (bms.power > 0.5f) SolarGreen else if (bms.power < -0.5f) LoadOrange else TextMuted,
+                    fontFamily = FontFamily.Monospace
                 )
             }
-            Spacer(modifier = Modifier.height(2.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = String.format(Locale.US, "%.2f V • %.1f A", bms.voltage, bms.current),
+                    text = String.format(Locale.US, "%.2f V · %.1f A", bms.voltage, bms.current),
                     style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFFCFD8DC)
+                    color = TextSecondary,
+                    fontFamily = FontFamily.Monospace
                 )
                 Text(
                     text = "Δ ${bms.deltaVoltageMv} mV",
                     style = MaterialTheme.typography.labelSmall,
                     fontSize = 10.sp,
-                    color = if (bms.deltaVoltageMv > 50) Color(0xFFFF5252) else Color(0xFF00E676)
+                    color = if (bms.deltaVoltageMv > 50) ErrorRed else SolarGreen,
+                    fontWeight = FontWeight.Bold
                 )
             }
         }

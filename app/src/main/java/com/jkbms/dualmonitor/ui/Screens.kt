@@ -489,9 +489,9 @@ fun TotalBankCard(bank: TotalBankData) {
 
     val soc = bank.capacityWeightedSoc.coerceIn(0, 100)
     val socColor = when {
-        soc >= 70 -> SolarGreen
-        soc >= 40 -> CautionYellow
-        else      -> ErrorRed
+        soc > 50 -> SolarGreen
+        soc > 10 -> CautionYellow
+        else     -> ErrorRed
     }
 
     Card(
@@ -606,9 +606,9 @@ fun TotalBankCard(bank: TotalBankData) {
                         if (fillSweep > 0f) {
                             drawArc(
                                 color = when {
-                                    soc >= 70 -> SolarGreen
-                                    soc >= 40 -> CautionYellow
-                                    else      -> ErrorRed
+                                    soc > 50 -> SolarGreen
+                                    soc > 10 -> CautionYellow
+                                    else     -> ErrorRed
                                 },
                                 startAngle = startAngle,
                                 sweepAngle = fillSweep,
@@ -813,38 +813,56 @@ fun TodayEnergyCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Solar vs Load - large metric cards side by side
+            // Solar vs Load - large metric cards side by side (Symmetrical)
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Min),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 // Solar Charged
                 Box(
                     modifier = Modifier
                         .weight(1f)
+                        .fillMaxHeight()
                         .background(Color(0xFF0A1F12), RoundedCornerShape(12.dp))
                         .border(1.dp, SolarGreen.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
                         .padding(12.dp)
                 ) {
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Box(modifier = Modifier.size(8.dp).background(SolarGreen, CircleShape))
-                            Text("SOLAR", fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, color = SolarGreen, letterSpacing = 1.sp)
+                    Column(
+                        modifier = Modifier.fillMaxHeight(),
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Box(modifier = Modifier.size(8.dp).background(SolarGreen, CircleShape))
+                                Text("SOLAR", fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, color = SolarGreen, letterSpacing = 1.sp)
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                formatEnergy(record.chargedKwh, "+"),
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = SolarGreen,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Text(
+                                String.format("+%.1f Ah", record.chargedAh),
+                                fontSize = 11.sp,
+                                color = SolarGreenL,
+                                fontFamily = FontFamily.Monospace
+                            )
                         }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            formatEnergy(record.chargedKwh, "+"),
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = SolarGreen,
-                            fontFamily = FontFamily.Monospace
-                        )
-                        Text(
-                            String.format("+%.1f Ah", record.chargedAh),
-                            fontSize = 11.sp,
-                            color = SolarGreenL,
-                            fontFamily = FontFamily.Monospace
-                        )
+                        if (record.chargedKwh > 0.005f || record.dischargedKwh > 0.005f) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                if (record.chargedKwh > 0.005f) String.format(Locale.US, "%s%.2f value", currencySymbol, record.chargedKwh * electricityPricePerKwh) else "—",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = SolarGreenL,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
                     }
                 }
 
@@ -852,33 +870,39 @@ fun TodayEnergyCard(
                 Box(
                     modifier = Modifier
                         .weight(1f)
+                        .fillMaxHeight()
                         .background(Color(0xFF1F0F05), RoundedCornerShape(12.dp))
                         .border(1.dp, LoadOrange.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
                         .padding(12.dp)
                 ) {
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Box(modifier = Modifier.size(8.dp).background(LoadOrange, CircleShape))
-                            Text("LOAD", fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, color = LoadOrange, letterSpacing = 1.sp)
+                    Column(
+                        modifier = Modifier.fillMaxHeight(),
+                        verticalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Box(modifier = Modifier.size(8.dp).background(LoadOrange, CircleShape))
+                                Text("LOAD", fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, color = LoadOrange, letterSpacing = 1.sp)
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                formatEnergy(record.dischargedKwh, "-"),
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = LoadOrange,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Text(
+                                String.format("-%.1f Ah", record.dischargedAh),
+                                fontSize = 11.sp,
+                                color = LoadOrangeL,
+                                fontFamily = FontFamily.Monospace
+                            )
                         }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            formatEnergy(record.dischargedKwh, "-"),
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = LoadOrange,
-                            fontFamily = FontFamily.Monospace
-                        )
-                        Text(
-                            String.format("-%.1f Ah", record.dischargedAh),
-                            fontSize = 11.sp,
-                            color = LoadOrangeL,
-                            fontFamily = FontFamily.Monospace
-                        )
-                        if (record.dischargedKwh > 0.005f) {
+                        if (record.chargedKwh > 0.005f || record.dischargedKwh > 0.005f) {
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                String.format(Locale.US, "%s%.2f saved", currencySymbol, record.dischargedKwh * electricityPricePerKwh),
+                                if (record.dischargedKwh > 0.005f) String.format(Locale.US, "%s%.2f saved", currencySymbol, record.dischargedKwh * electricityPricePerKwh) else "—",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = AccentBlueL,
@@ -1361,42 +1385,44 @@ fun EnergyHistoryScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0F1117))
+            .background(BgPrimary)
     ) {
         // 1. Top Navigation Bar (< History)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 6.dp),
+                .padding(horizontal = 8.dp, vertical = 8.dp),
             contentAlignment = Alignment.Center
         ) {
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
-                    .size(44.dp)
+                    .size(40.dp)
                     .clip(CircleShape)
+                    .background(Color(0xFF1E2838))
                     .clickable(onClick = onBack),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = "‹",
-                    color = Color.White,
-                    fontSize = 32.sp,
-                    fontWeight = FontWeight.Normal,
+                    color = TextPrimary,
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(bottom = 2.dp)
                 )
             }
 
             Text(
-                text = "History",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.White,
-                textAlign = TextAlign.Center
+                text = "ENERGY HISTORY",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.ExtraBold,
+                color = TextPrimary,
+                textAlign = TextAlign.Center,
+                letterSpacing = 1.sp
             )
         }
 
-        HorizontalDivider(color = Color(0xFF1E2633), thickness = 1.dp)
+        HorizontalDivider(color = DividerColor, thickness = 1.dp)
 
         // 2. Scrollable Body Content
         Column(
@@ -1414,37 +1440,37 @@ fun EnergyHistoryScreen(
             ) {
                 Row(
                     modifier = Modifier
-                        .background(Color(0xFF141A22), RoundedCornerShape(8.dp))
-                        .border(1.dp, Color(0xFF263238), RoundedCornerShape(8.dp))
+                        .background(BgCardAlt, RoundedCornerShape(10.dp))
+                        .border(1.dp, CardBorder, RoundedCornerShape(10.dp))
                         .padding(3.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(if (isBillingCycleMode) Color(0xFF004D40) else Color.Transparent)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isBillingCycleMode) AccentBlue else Color.Transparent)
                             .clickable { isBillingCycleMode = true }
                             .padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {
                         Text(
                             text = "⚡ BILLING CYCLE",
                             fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isBillingCycleMode) Color(0xFF64FFDA) else Color.Gray
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isBillingCycleMode) Color.White else TextMuted
                         )
                     }
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(if (!isBillingCycleMode) Color(0xFF004D40) else Color.Transparent)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (!isBillingCycleMode) AccentBlue else Color.Transparent)
                             .clickable { isBillingCycleMode = false }
                             .padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {
                         Text(
                             text = "📅 CALENDAR",
                             fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (!isBillingCycleMode) Color(0xFF64FFDA) else Color.Gray
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (!isBillingCycleMode) Color.White else TextMuted
                         )
                     }
                 }
@@ -1454,8 +1480,8 @@ fun EnergyHistoryScreen(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF162232))
-                            .border(1.dp, Color(0xFF2979FF).copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                            .background(Color(0xFF0D1E3A))
+                            .border(1.dp, AccentBlue.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                             .clickable { showCutoffDialog = true }
                             .padding(horizontal = 8.dp, vertical = 6.dp)
                     ) {
@@ -1463,15 +1489,15 @@ fun EnergyHistoryScreen(
                             text = "CUTOFF: ${billingCycleStartDay}${getDaySuffix(billingCycleStartDay)}",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF90CAF9)
+                            color = AccentBlueL
                         )
                     }
 
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF14291E))
-                            .border(1.dp, Color(0xFF00E676).copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                            .background(Color(0xFF0A1F12))
+                            .border(1.dp, SolarGreen.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                             .clickable { showCutoffDialog = true }
                             .padding(horizontal = 8.dp, vertical = 6.dp)
                     ) {
@@ -1479,7 +1505,7 @@ fun EnergyHistoryScreen(
                             text = "${currencySymbol}${String.format(Locale.US, "%.2f", electricityPricePerKwh)} ⚙️",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF64FFDA)
+                            color = SolarGreen
                         )
                     }
                 }
@@ -1510,14 +1536,14 @@ fun EnergyHistoryScreen(
                         },
                         modifier = Modifier.size(36.dp)
                     ) {
-                        Text("◀", color = Color(0xFF64FFDA), fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        Text("◀", color = AccentBlueL, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     }
 
                     Text(
                         text = if (isBillingCycleMode) billingCycleInfo.label else getMonthHeaderTitle(targetYear, targetMonth),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = TextPrimary
                     )
 
                     IconButton(
@@ -1541,7 +1567,7 @@ fun EnergyHistoryScreen(
                         val isEnabled = if (isBillingCycleMode) cycleOffset < 0 else !isCurrentMonth
                         Text(
                             "▶",
-                            color = if (isEnabled) Color(0xFF64FFDA) else Color.DarkGray,
+                            color = if (isEnabled) AccentBlueL else TextMuted,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -1552,14 +1578,14 @@ fun EnergyHistoryScreen(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
-                        .background(if (showBarChart) Color(0xFF004D40) else Color(0xFF1E232E))
+                        .background(if (showBarChart) AccentBlue else Color(0xFF1E2838))
                         .clickable { showBarChart = !showBarChart }
                         .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
                     Text(
                         text = if (showBarChart) "HIDE CHART" else "BAR CHART",
                         fontSize = 11.sp,
-                        color = if (showBarChart) Color(0xFF64FFDA) else Color.LightGray,
+                        color = if (showBarChart) Color.White else TextSecondary,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -1569,9 +1595,9 @@ fun EnergyHistoryScreen(
             if (showBarChart) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF131F2A)),
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, Color(0xFF00BFA5).copy(alpha = 0.4f))
+                    colors = CardDefaults.cardColors(containerColor = BgCard),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, CardBorder)
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
                         Row(
@@ -1579,8 +1605,8 @@ fun EnergyHistoryScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("DAILY YIELD & LOAD BARS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF64FFDA))
-                            Text("Tap bar to inspect", fontSize = 10.sp, color = Color.Gray)
+                            Text("DAILY YIELD & LOAD BARS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = AccentBlueL)
+                            Text("Tap bar to inspect", fontSize = 10.sp, color = TextMuted)
                         }
                         Spacer(modifier = Modifier.height(10.dp))
                         MonthlyEnergyBarChart(
@@ -1596,9 +1622,9 @@ fun EnergyHistoryScreen(
             // 3. Period Total Summary Card (Billing Cycle or Month)
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF141D26)),
-                border = BorderStroke(1.dp, Color(0xFF263238)),
-                shape = RoundedCornerShape(12.dp)
+                colors = CardDefaults.cardColors(containerColor = BgCard),
+                border = BorderStroke(1.dp, CardBorder),
+                shape = RoundedCornerShape(16.dp)
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
@@ -1614,14 +1640,14 @@ fun EnergyHistoryScreen(
                                 text = if (isBillingCycleMode) "BILLING CYCLE TOTALS" else "${getMonthHeaderTitle(targetYear, targetMonth)} TOTALS",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF80CBC4),
-                                letterSpacing = 0.5.sp
+                                color = TextSecondary,
+                                letterSpacing = 1.sp
                             )
                             if (isBillingCycleMode) {
                                 Text(
                                     text = if (billingCycleInfo.isCurrentCycle) "Current Cycle (${billingCycleInfo.days.size} days elapsed)" else "${billingCycleInfo.days.size} days in cycle",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFF64FFDA),
+                                    color = AccentBlueL,
                                     fontSize = 10.sp
                                 )
                             }
@@ -1629,44 +1655,53 @@ fun EnergyHistoryScreen(
                         Text(
                             text = if (activeDaysCount > 0) "$activeDaysCount active days" else "0 days logged",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color(0xFF90A4AE)
+                            color = TextMuted
                         )
                     }
 
-                    // Two prominent metric boxes: Charged & Consumed
+                    // Two prominent metric boxes: Charged & Consumed (Symmetrical)
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(IntrinsicSize.Min),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         // Solar Charged Box
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .background(Color(0xFF0D281E), RoundedCornerShape(8.dp))
-                                .border(1.dp, Color(0xFF00E676).copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                                .fillMaxHeight()
+                                .background(Color(0xFF0A1F12), RoundedCornerShape(12.dp))
+                                .border(1.dp, SolarGreen.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
                                 .padding(12.dp)
                         ) {
-                            Column {
-                                Text(
-                                    text = "SOLAR CHARGED",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFF81C784),
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = formatEnergy(totalChargedKwh, prefix = "+"),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFF00E676),
-                                    fontFamily = FontFamily.Monospace
-                                )
-                                Text(
-                                    text = String.format(Locale.US, "+%.1f Ah", totalChargedAh),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFFA5D6A7),
-                                    fontFamily = FontFamily.Monospace
-                                )
+                            Column(
+                                modifier = Modifier.fillMaxHeight(),
+                                verticalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column {
+                                    Text(
+                                        text = "SOLAR CHARGED",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = SolarGreen,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.8.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = formatEnergy(totalChargedKwh, prefix = "+"),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = SolarGreen,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                    Text(
+                                        text = String.format(Locale.US, "+%.1f Ah", totalChargedAh),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = SolarGreenL,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
                             }
                         }
 
@@ -1674,31 +1709,38 @@ fun EnergyHistoryScreen(
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .background(Color(0xFF2B1C10), RoundedCornerShape(8.dp))
-                                .border(1.dp, Color(0xFFFF9100).copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                                .fillMaxHeight()
+                                .background(Color(0xFF1F0F05), RoundedCornerShape(12.dp))
+                                .border(1.dp, LoadOrange.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
                                 .padding(12.dp)
                         ) {
-                            Column {
-                                Text(
-                                    text = "LOAD CONSUMED",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFFFFB74D),
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = formatEnergy(totalDischargedKwh, prefix = "-"),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFFFF9100),
-                                    fontFamily = FontFamily.Monospace
-                                )
-                                Text(
-                                    text = String.format(Locale.US, "-%.1f Ah", totalDischargedAh),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color(0xFFFFCC80),
-                                    fontFamily = FontFamily.Monospace
-                                )
+                            Column(
+                                modifier = Modifier.fillMaxHeight(),
+                                verticalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column {
+                                    Text(
+                                        text = "LOAD CONSUMED",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = LoadOrange,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.8.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = formatEnergy(totalDischargedKwh, prefix = "-"),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = LoadOrange,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                    Text(
+                                        text = String.format(Locale.US, "-%.1f Ah", totalDischargedAh),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = LoadOrangeL,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
                             }
                         }
                     }
@@ -1708,9 +1750,9 @@ fun EnergyHistoryScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF13281E))
-                            .border(1.dp, Color(0xFF00E676).copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF0A1F12))
+                            .border(1.dp, SolarGreen.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
                             .clickable { showCutoffDialog = true }
                             .padding(12.dp)
                     ) {
@@ -1723,14 +1765,14 @@ fun EnergyHistoryScreen(
                                 Text(
                                     text = "💰 ESTIMATED COST SAVINGS",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFF81C784),
+                                    color = SolarGreen,
                                     fontWeight = FontWeight.Bold,
                                     letterSpacing = 0.5.sp
                                 )
                                 Text(
                                     text = "@ ${currencySymbol}${String.format(Locale.US, "%.2f", electricityPricePerKwh)}/kWh ⚙️",
                                     fontSize = 11.sp,
-                                    color = Color(0xFF64FFDA),
+                                    color = AccentBlueL,
                                     fontFamily = FontFamily.Monospace,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -1839,9 +1881,9 @@ fun EnergyHistoryScreen(
             // 4. Tabular Daily Breakdown Card (Matching User's Screenshot)
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF141820)),
-                shape = RoundedCornerShape(12.dp),
-                border = BorderStroke(1.dp, Color(0xFF263238))
+                colors = CardDefaults.cardColors(containerColor = BgCard),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, CardBorder)
             ) {
                 Column {
                     // Header with Table View Mode (Period vs All 365 Days)
@@ -1858,43 +1900,43 @@ fun EnergyHistoryScreen(
                                    else "${getMonthHeaderTitle(targetYear, targetMonth)} LOGS",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF90A4AE),
+                            color = TextSecondary,
                             letterSpacing = 0.5.sp
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(6.dp))
-                                    .background(if (!showAllDays) Color(0xFF004D40) else Color(0xFF1E232E))
+                                    .background(if (!showAllDays) AccentBlue else Color(0xFF1E2838))
                                     .clickable { showAllDays = false }
                                     .padding(horizontal = 10.dp, vertical = 4.dp)
                             ) {
                                 Text(
                                     text = if (isBillingCycleMode) "CYCLE" else "MONTH",
                                     fontSize = 10.sp,
-                                    color = if (!showAllDays) Color(0xFF64FFDA) else Color.LightGray,
+                                    color = if (!showAllDays) Color.White else TextSecondary,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(6.dp))
-                                    .background(if (showAllDays) Color(0xFF004D40) else Color(0xFF1E232E))
+                                    .background(if (showAllDays) AccentBlue else Color(0xFF1E2838))
                                     .clickable { showAllDays = true }
                                     .padding(horizontal = 10.dp, vertical = 4.dp)
                             ) {
-                                Text("ALL 365 DAYS", fontSize = 10.sp, color = if (showAllDays) Color(0xFF64FFDA) else Color.LightGray, fontWeight = FontWeight.Bold)
+                                Text("ALL 365 DAYS", fontSize = 10.sp, color = if (showAllDays) Color.White else TextSecondary, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
 
-                    HorizontalDivider(color = Color(0xFF1E2633), thickness = 1.dp)
+                    HorizontalDivider(color = DividerColor, thickness = 1.dp)
 
                     // Table Header Row (matching screenshot layout)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFF171E28))
+                            .background(BgCardAlt)
                             .padding(horizontal = 14.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -1903,14 +1945,14 @@ fun EnergyHistoryScreen(
                             modifier = Modifier.weight(1.0f),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFFB0BEC5)
+                            color = TextSecondary
                         )
                         Text(
                             text = "Solar Charged",
                             modifier = Modifier.weight(1.1f),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF00E676),
+                            color = SolarGreen,
                             textAlign = TextAlign.End
                         )
                         Text(
@@ -1918,12 +1960,12 @@ fun EnergyHistoryScreen(
                             modifier = Modifier.weight(1.1f),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFFFF9100),
+                            color = LoadOrange,
                             textAlign = TextAlign.End
                         )
                     }
 
-                    HorizontalDivider(color = Color(0xFF263238), thickness = 1.dp)
+                    HorizontalDivider(color = DividerColor, thickness = 1.dp)
 
                     // Table Rows
                     if (displayedList.isEmpty()) {
@@ -2145,11 +2187,11 @@ fun EnergyHistoryScreen(
             onDismissRequest = { showCutoffDialog = false },
             title = {
                 Column {
-                    Text("Billing & Tariff Settings", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Billing & Tariff Settings", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         "Set your electricity rate and billing cutoff day to accurately compute money saved from battery usage.",
-                        color = Color.Gray,
+                        color = TextMuted,
                         fontSize = 12.sp
                     )
                 }
@@ -2165,7 +2207,7 @@ fun EnergyHistoryScreen(
                             "ELECTRICITY PRICE PER KWH",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF80CBC4),
+                            color = TextSecondary,
                             letterSpacing = 0.5.sp
                         )
 
@@ -2184,7 +2226,7 @@ fun EnergyHistoryScreen(
                                 text = "${tempSymbol} ${String.format(Locale.US, "%.2f", tempRate)}",
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF00E676),
+                                color = SolarGreen,
                                 modifier = Modifier.padding(horizontal = 16.dp),
                                 fontFamily = FontFamily.Monospace
                             )
@@ -2196,7 +2238,7 @@ fun EnergyHistoryScreen(
                             }
                         }
 
-                        Text("Rate Presets:", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                        Text("Rate Presets:", fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.Bold)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
@@ -2206,7 +2248,7 @@ fun EnergyHistoryScreen(
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(6.dp))
-                                        .background(if (isSelected) Color(0xFF00E676) else Color(0xFF222B38))
+                                        .background(if (isSelected) AccentBlue else Color(0xFF1E2838))
                                         .clickable { tempRate = r }
                                         .padding(horizontal = 7.dp, vertical = 5.dp)
                                 ) {
@@ -2214,13 +2256,13 @@ fun EnergyHistoryScreen(
                                         text = "${r.toInt()}",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) Color.Black else Color.White
+                                        color = if (isSelected) Color.White else TextSecondary
                                     )
                                 }
                             }
                         }
 
-                        Text("Currency Symbol:", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                        Text("Currency Symbol:", fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.Bold)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -2230,7 +2272,7 @@ fun EnergyHistoryScreen(
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(6.dp))
-                                        .background(if (isSelected) Color(0xFF64FFDA) else Color(0xFF222B38))
+                                        .background(if (isSelected) AccentBlue else Color(0xFF1E2838))
                                         .clickable { tempSymbol = sym }
                                         .padding(horizontal = 12.dp, vertical = 6.dp)
                                 ) {
@@ -2238,14 +2280,14 @@ fun EnergyHistoryScreen(
                                         text = sym,
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) Color.Black else Color.White
+                                        color = if (isSelected) Color.White else TextSecondary
                                     )
                                 }
                             }
                         }
                     }
 
-                    HorizontalDivider(color = Color(0xFF263238), thickness = 1.dp)
+                    HorizontalDivider(color = DividerColor, thickness = 1.dp)
 
                     // SECTION 2: Billing Cutoff Day
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2253,7 +2295,7 @@ fun EnergyHistoryScreen(
                             "BILLING CYCLE CUTOFF DAY",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF90CAF9),
+                            color = TextSecondary,
                             letterSpacing = 0.5.sp
                         )
 
@@ -2272,7 +2314,7 @@ fun EnergyHistoryScreen(
                                 text = "Starts ${tempDay}${getDaySuffix(tempDay)}",
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF90CAF9),
+                                color = AccentBlueL,
                                 modifier = Modifier.padding(horizontal = 16.dp)
                             )
                             IconButton(
@@ -2283,7 +2325,7 @@ fun EnergyHistoryScreen(
                             }
                         }
 
-                        Text("Day Presets:", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                        Text("Day Presets:", fontSize = 11.sp, color = TextMuted, fontWeight = FontWeight.Bold)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
@@ -2293,7 +2335,7 @@ fun EnergyHistoryScreen(
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(6.dp))
-                                        .background(if (isSelected) Color(0xFF2979FF) else Color(0xFF222B38))
+                                        .background(if (isSelected) AccentBlue else Color(0xFF1E2838))
                                         .clickable { tempDay = d }
                                         .padding(horizontal = 8.dp, vertical = 6.dp)
                                 ) {
@@ -2301,7 +2343,7 @@ fun EnergyHistoryScreen(
                                         text = "${d}${getDaySuffix(d)}",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) Color.White else Color.LightGray
+                                        color = if (isSelected) Color.White else TextSecondary
                                     )
                                 }
                             }
@@ -2317,17 +2359,17 @@ fun EnergyHistoryScreen(
                         onUpdateCurrencySymbol(tempSymbol)
                         showCutoffDialog = false
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E676))
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
                 ) {
-                    Text("SAVE SETTINGS", color = Color.Black, fontWeight = FontWeight.Bold)
+                    Text("SAVE SETTINGS", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showCutoffDialog = false }) {
-                    Text("CANCEL", color = Color.LightGray)
+                    Text("CANCEL", color = TextSecondary)
                 }
             },
-            containerColor = Color(0xFF141820),
+            containerColor = BgCard,
             shape = RoundedCornerShape(16.dp)
         )
     }
@@ -2525,9 +2567,9 @@ fun BatteryPackRow(
 
     val soc = bms.soc.coerceIn(0, 100)
     val socColor = when {
-        soc >= 70 -> SolarGreen
-        soc >= 40 -> CautionYellow
-        else      -> ErrorRed
+        soc > 50 -> SolarGreen
+        soc > 10 -> CautionYellow
+        else     -> ErrorRed
     }
 
     val isConnected = bms.connectionStatus == ConnectionStatus.CONNECTED

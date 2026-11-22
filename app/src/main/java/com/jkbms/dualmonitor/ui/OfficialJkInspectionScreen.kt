@@ -30,6 +30,23 @@ import com.jkbms.dualmonitor.model.CellData
 import com.jkbms.dualmonitor.model.ConnectionStatus
 import kotlinx.coroutines.launch
 
+// Design System Constants
+private val BgPrimary      = Color(0xFF0B0F1A)
+private val BgCard         = Color(0xFF111827)
+private val BgCardAlt      = Color(0xFF0D1526)
+private val AccentBlue     = Color(0xFF2979FF)
+private val AccentBlueL    = Color(0xFF82B1FF)
+private val SolarGreen     = Color(0xFF00C853)
+private val SolarGreenL    = Color(0xFFA5D6A7)
+private val LoadOrange     = Color(0xFFFF6D00)
+private val CautionYellow  = Color(0xFFFFD600)
+private val ErrorRed       = Color(0xFFFF1744)
+private val TextPrimary    = Color(0xFFE8EAED)
+private val TextSecondary  = Color(0xFF8F9BB3)
+private val TextMuted      = Color(0xFF4A5568)
+private val DividerColor   = Color(0xFF1E2D45)
+private val CardBorder     = Color(0xFF1E3A5F)
+
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun OfficialJkInspectionScreen(
@@ -46,7 +63,7 @@ fun OfficialJkInspectionScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0F1117))
+            .background(BgPrimary)
             .padding(16.dp)
     ) {
         // 1. Top Navigation Bar
@@ -57,17 +74,18 @@ fun OfficialJkInspectionScreen(
         ) {
             Button(
                 onClick = onBack,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E2638)),
-                shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E2838)),
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
             ) {
-                Text("← DASHBOARD", color = Color(0xFF90CAF9), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                Text("‹ DASHBOARD", color = AccentBlueL, fontWeight = FontWeight.Bold, fontSize = 12.sp)
             }
 
             // Pack Switcher Pills: Instant flip between B1 and B2
             Row(
                 modifier = Modifier
-                    .background(Color(0xFF191D28), RoundedCornerShape(20.dp))
+                    .background(BgCardAlt, RoundedCornerShape(20.dp))
+                    .border(1.dp, CardBorder, RoundedCornerShape(20.dp))
                     .padding(3.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
@@ -75,7 +93,7 @@ fun OfficialJkInspectionScreen(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(16.dp))
-                        .background(if (isB1) Color(0xFF00E676) else Color.Transparent)
+                        .background(if (isB1) AccentBlue else Color.Transparent)
                         .clickable { selectedSlot = "B1" }
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
@@ -83,7 +101,7 @@ fun OfficialJkInspectionScreen(
                         "B1 (100Ah)",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isB1) Color.Black else Color.Gray
+                        color = if (isB1) Color.White else TextSecondary
                     )
                 }
 
@@ -91,7 +109,7 @@ fun OfficialJkInspectionScreen(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(16.dp))
-                        .background(if (isB2) Color(0xFF00E676) else Color.Transparent)
+                        .background(if (isB2) AccentBlue else Color.Transparent)
                         .clickable { selectedSlot = "B2" }
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
@@ -99,7 +117,7 @@ fun OfficialJkInspectionScreen(
                         "B2 (100Ah)",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isB2) Color.Black else Color.Gray
+                        color = if (isB2) Color.White else TextSecondary
                     )
                 }
             }
@@ -110,8 +128,9 @@ fun OfficialJkInspectionScreen(
         // 2. Battery Header Info Strip
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF171B26)),
-            shape = RoundedCornerShape(10.dp)
+            colors = CardDefaults.cardColors(containerColor = BgCard),
+            border = BorderStroke(1.dp, CardBorder),
+            shape = RoundedCornerShape(14.dp)
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp).fillMaxWidth(),
@@ -123,22 +142,23 @@ fun OfficialJkInspectionScreen(
                         text = currentBms.displayName.ifBlank { "JK BMS PACK" },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = TextPrimary
                     )
                     Text(
                         text = "MAC: ${currentBms.macAddress} • JK 16S LFP",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color.Gray
+                        color = TextMuted
                     )
                 }
                 val isOnline = currentBms.connectionStatus == ConnectionStatus.CONNECTED
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Box(modifier = Modifier.size(8.dp).background(if (isOnline) Color(0xFF00E676) else Color(0xFFFF5252), CircleShape))
+                    Box(modifier = Modifier.size(8.dp).background(if (isOnline) SolarGreen else ErrorRed, CircleShape))
                     Text(
                         text = if (isOnline) "ONLINE" else "OFFLINE",
-                        color = if (isOnline) Color(0xFF00E676) else Color(0xFFFF5252),
+                        color = if (isOnline) SolarGreen else ErrorRed,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp
+                        fontSize = 11.sp,
+                        letterSpacing = 0.5.sp
                     )
                 }
             }
@@ -150,18 +170,19 @@ fun OfficialJkInspectionScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFF141722), RoundedCornerShape(10.dp))
-                .padding(3.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                .background(BgCardAlt, RoundedCornerShape(12.dp))
+                .border(1.dp, CardBorder, RoundedCornerShape(12.dp))
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            val tabs = listOf("📊 STATUS", "🔋 CELLS (16S)", "🛡️ SAFETY LIMITS")
+            val tabs = listOf("📊  STATUS", "🔋  CELLS (16S)", "🛡️  SAFETY")
             tabs.forEachIndexed { idx, label ->
                 val isSelected = pagerState.currentPage == idx
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(if (isSelected) Color(0xFF232D3F) else Color.Transparent)
+                        .background(if (isSelected) AccentBlue else Color.Transparent)
                         .clickable {
                             coroutineScope.launch {
                                 pagerState.animateScrollToPage(idx)
@@ -173,8 +194,8 @@ fun OfficialJkInspectionScreen(
                     Text(
                         text = label,
                         fontSize = 11.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                        color = if (isSelected) Color(0xFF00E676) else Color(0xFF90A4AE)
+                        fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
+                        color = if (isSelected) Color.White else TextSecondary
                     )
                 }
             }
@@ -201,6 +222,14 @@ fun OfficialJkInspectionScreen(
 // -------------------------------------------------------------
 @Composable
 fun JkStatusTab(bms: BmsData) {
+    val soc = bms.soc.coerceIn(0, 100)
+    // Updated threshold per user request: Green > 50%, Amber > 10%, Red <= 10%
+    val socColor = when {
+        soc > 50 -> SolarGreen
+        soc > 10 -> CautionYellow
+        else     -> ErrorRed
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -210,9 +239,9 @@ fun JkStatusTab(bms: BmsData) {
         // A. Hero Card: SOC Gauge & Battery Capacity
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF14202E)),
-            border = BorderStroke(1.dp, Color(0xFF1976D2).copy(alpha = 0.5f)),
-            shape = RoundedCornerShape(12.dp)
+            colors = CardDefaults.cardColors(containerColor = BgCard),
+            border = BorderStroke(1.dp, CardBorder),
+            shape = RoundedCornerShape(16.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(
@@ -221,55 +250,52 @@ fun JkStatusTab(bms: BmsData) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text("STATE OF CHARGE", fontSize = 11.sp, color = Color(0xFF90CAF9), fontWeight = FontWeight.Bold)
+                        Text("STATE OF CHARGE", fontSize = 10.sp, color = TextSecondary, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         Row(verticalAlignment = Alignment.Bottom) {
                             Text(
-                                text = "${bms.soc}",
+                                text = "$soc",
                                 fontSize = 42.sp,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF00E676),
+                                color = socColor,
                                 fontFamily = FontFamily.Monospace
                             )
                             Text(
                                 text = " %",
                                 fontSize = 22.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF69F0AE),
+                                color = socColor,
                                 modifier = Modifier.padding(bottom = 6.dp)
                             )
                         }
                     }
 
                     Column(horizontalAlignment = Alignment.End) {
-                        Text("REMAINING / NOMINAL", fontSize = 10.sp, color = Color.Gray)
+                        Text("REMAINING / NOMINAL", fontSize = 10.sp, color = TextMuted, letterSpacing = 0.5.sp)
                         Text(
                             text = String.format("%.1f / %.0f Ah", bms.remainingCapacityAh, bms.nominalCapacityAh),
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White,
+                            color = TextPrimary,
                             fontFamily = FontFamily.Monospace
                         )
                         val storedEnergyKwh = (bms.voltage * bms.remainingCapacityAh) / 1000f
                         Text(
                             text = String.format("Stored: %.2f kWh", storedEnergyKwh),
                             fontSize = 12.sp,
-                            color = Color(0xFF64FFDA)
+                            color = AccentBlueL,
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Progress Bar
+                // Progress Bar with user's threshold
                 LinearProgressIndicator(
-                    progress = { (bms.soc / 100f).coerceIn(0f, 1f) },
+                    progress = { (soc / 100f).coerceIn(0f, 1f) },
                     modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
-                    color = when {
-                        bms.soc > 50 -> Color(0xFF00E676)
-                        bms.soc > 20 -> Color(0xFFFFB300)
-                        else -> Color(0xFFFF5252)
-                    },
-                    trackColor = Color(0xFF263238)
+                    color = socColor,
+                    trackColor = Color(0xFF1E2D45)
                 )
             }
         }
@@ -277,12 +303,13 @@ fun JkStatusTab(bms: BmsData) {
         // B. Main Electrical Power Matrix
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF171B26)),
-            shape = RoundedCornerShape(12.dp)
+            colors = CardDefaults.cardColors(containerColor = BgCard),
+            border = BorderStroke(1.dp, CardBorder),
+            shape = RoundedCornerShape(14.dp)
         ) {
             Column(modifier = Modifier.padding(14.dp)) {
-                Text("ELECTRICAL TELEMETRY", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(8.dp))
+                Text("ELECTRICAL TELEMETRY", fontSize = 10.sp, color = TextSecondary, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                Spacer(modifier = Modifier.height(10.dp))
 
                 Row(modifier = Modifier.fillMaxWidth()) {
                     OfficialMetricItem(
@@ -298,9 +325,9 @@ fun JkStatusTab(bms: BmsData) {
                         else -> "CURRENT (STANDBY)"
                     }
                     val curColor = when {
-                        isCharging -> Color(0xFF00E676)
-                        isDischarging -> Color(0xFFFF9100)
-                        else -> Color.White
+                        isCharging -> SolarGreen
+                        isDischarging -> LoadOrange
+                        else -> TextPrimary
                     }
                     OfficialMetricItem(
                         label = curLabel,
@@ -311,18 +338,24 @@ fun JkStatusTab(bms: BmsData) {
                     )
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Row(modifier = Modifier.fillMaxWidth()) {
+                    val pColor = when {
+                        bms.power > 0.5f -> SolarGreen
+                        bms.power < -0.5f -> LoadOrange
+                        else -> TextPrimary
+                    }
                     OfficialMetricItem(
                         label = "REAL-TIME POWER",
                         value = String.format("%.0f W", kotlin.math.abs(bms.power)),
+                        valueColor = pColor,
                         modifier = Modifier.weight(1f)
                     )
                     OfficialMetricItem(
                         label = "MAX CELL DELTA",
                         value = "${bms.deltaVoltageMv} mV",
-                        valueColor = if (bms.deltaVoltageMv > 25) Color(0xFFFF5252) else Color(0xFF00E676),
+                        valueColor = if (bms.deltaVoltageMv > 25) ErrorRed else SolarGreen,
                         modifier = Modifier.weight(1f),
                         alignEnd = true
                     )
@@ -333,9 +366,9 @@ fun JkStatusTab(bms: BmsData) {
         // C. Official MOS & Balancer Controls (Protected Read-Only!)
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF14241C)),
-            border = BorderStroke(1.dp, Color(0xFF2E7D32).copy(alpha = 0.5f)),
-            shape = RoundedCornerShape(12.dp)
+            colors = CardDefaults.cardColors(containerColor = BgCard),
+            border = BorderStroke(1.dp, CardBorder),
+            shape = RoundedCornerShape(14.dp)
         ) {
             Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(
@@ -343,8 +376,8 @@ fun JkStatusTab(bms: BmsData) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("MOS & BALANCER STATUS", fontSize = 11.sp, color = Color(0xFFA5D6A7), fontWeight = FontWeight.Bold)
-                    Text("READ-ONLY MONITORED", fontSize = 10.sp, color = Color(0xFF81C784), fontWeight = FontWeight.Bold)
+                    Text("MOS & BALANCER STATUS", fontSize = 10.sp, color = TextSecondary, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Text("READ-ONLY", fontSize = 10.sp, color = AccentBlueL, fontWeight = FontWeight.Bold)
                 }
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -370,7 +403,7 @@ fun JkStatusTab(bms: BmsData) {
                 Text(
                     text = "Control switches are locked in Read-Only mode to prevent accidental power cuts to your inverter.",
                     fontSize = 10.sp,
-                    color = Color(0xFF9E9E9E)
+                    color = TextMuted
                 )
             }
         }
@@ -378,12 +411,13 @@ fun JkStatusTab(bms: BmsData) {
         // D. Temperatures & Battery Health
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF171B26)),
-            shape = RoundedCornerShape(12.dp)
+            colors = CardDefaults.cardColors(containerColor = BgCard),
+            border = BorderStroke(1.dp, CardBorder),
+            shape = RoundedCornerShape(14.dp)
         ) {
             Column(modifier = Modifier.padding(14.dp)) {
-                Text("THERMAL & HEALTH METRICS", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(8.dp))
+                Text("THERMAL & HEALTH METRICS", fontSize = 10.sp, color = TextSecondary, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                Spacer(modifier = Modifier.height(10.dp))
 
                 Row(modifier = Modifier.fillMaxWidth()) {
                     OfficialMetricItem(
@@ -399,7 +433,7 @@ fun JkStatusTab(bms: BmsData) {
                     )
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Row(modifier = Modifier.fillMaxWidth()) {
                     OfficialMetricItem(
@@ -410,7 +444,7 @@ fun JkStatusTab(bms: BmsData) {
                     OfficialMetricItem(
                         label = "BATTERY SOH",
                         value = "100 %",
-                        valueColor = Color(0xFF00E676),
+                        valueColor = SolarGreen,
                         modifier = Modifier.weight(1f),
                         alignEnd = true
                     )
@@ -421,9 +455,9 @@ fun JkStatusTab(bms: BmsData) {
         // E. Protection & Alarm Status Shield
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A2218)),
-            border = BorderStroke(1.dp, Color(0xFF43A047).copy(alpha = 0.4f)),
-            shape = RoundedCornerShape(10.dp)
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF0A1F12)),
+            border = BorderStroke(1.dp, SolarGreen.copy(alpha = 0.4f)),
+            shape = RoundedCornerShape(12.dp)
         ) {
             Row(
                 modifier = Modifier.padding(12.dp).fillMaxWidth(),
@@ -432,8 +466,8 @@ fun JkStatusTab(bms: BmsData) {
             ) {
                 Text("🛡️", fontSize = 20.sp)
                 Column {
-                    Text("ALL SYSTEMS NORMAL", color = Color(0xFF69F0AE), fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                    Text("No overvoltage, undervoltage, or thermal alarms active.", color = Color.Gray, fontSize = 10.sp)
+                    Text("ALL SYSTEMS NORMAL", color = SolarGreen, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text("No overvoltage, undervoltage, or thermal alarms active.", color = TextSecondary, fontSize = 10.sp)
                 }
             }
         }
@@ -449,28 +483,29 @@ fun JkCellsTab(bms: BmsData) {
         // Summary Ribbon
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF171B26)),
-            shape = RoundedCornerShape(10.dp)
+            colors = CardDefaults.cardColors(containerColor = BgCard),
+            border = BorderStroke(1.dp, CardBorder),
+            shape = RoundedCornerShape(12.dp)
         ) {
             Row(
                 modifier = Modifier.padding(12.dp).fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column {
-                    Text("AVERAGE", color = Color.Gray, fontSize = 10.sp)
-                    Text(String.format("%.3f V", bms.averageCellVoltage), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text("AVERAGE", color = TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Text(String.format("%.3f V", bms.averageCellVoltage), color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
                 }
                 Column {
-                    Text("DELTA", color = Color.Gray, fontSize = 10.sp)
-                    Text("${bms.deltaVoltageMv} mV", color = Color(0xFF00E676), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text("DELTA", color = TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Text("${bms.deltaVoltageMv} mV", color = if (bms.deltaVoltageMv > 25) ErrorRed else SolarGreen, fontWeight = FontWeight.Bold, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
                 }
                 Column {
-                    Text("MIN (C${bms.minCellNumber})", color = Color.Gray, fontSize = 10.sp)
-                    Text(String.format("%.3f V", bms.minCellVoltage), color = Color(0xFFFFB74D), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text("MIN (C${bms.minCellNumber})", color = TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Text(String.format("%.3f V", bms.minCellVoltage), color = CautionYellow, fontWeight = FontWeight.Bold, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
                 }
                 Column {
-                    Text("MAX (C${bms.maxCellNumber})", color = Color.Gray, fontSize = 10.sp)
-                    Text(String.format("%.3f V", bms.maxCellVoltage), color = Color(0xFF4FC3F7), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text("MAX (C${bms.maxCellNumber})", color = TextMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Text(String.format("%.3f V", bms.maxCellVoltage), color = AccentBlueL, fontWeight = FontWeight.Bold, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
                 }
             }
         }
@@ -499,15 +534,15 @@ fun JkCellsTab(bms: BmsData) {
 @Composable
 fun OfficialCellCard(cell: CellData, isMin: Boolean, isMax: Boolean) {
     val borderColor = when {
-        isMax -> Color(0xFF29B6F6)
-        isMin -> Color(0xFFFF7043)
-        else -> Color(0xFF2A2E39)
+        isMax -> AccentBlueL
+        isMin -> LoadOrange
+        else -> CardBorder
     }
 
     Box(
         modifier = Modifier
-            .background(Color(0xFF1A1E29), RoundedCornerShape(8.dp))
-            .border(1.5.dp, borderColor, RoundedCornerShape(8.dp))
+            .background(BgCardAlt, RoundedCornerShape(10.dp))
+            .border(1.dp, borderColor, RoundedCornerShape(10.dp))
             .padding(8.dp)
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -516,10 +551,10 @@ fun OfficialCellCard(cell: CellData, isMin: Boolean, isMax: Boolean) {
                     text = String.format("C%02d", cell.index),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.Gray
+                    color = TextSecondary
                 )
-                if (isMax) Text("MAX", fontSize = 9.sp, color = Color(0xFF29B6F6), fontWeight = FontWeight.Bold)
-                if (isMin) Text("MIN", fontSize = 9.sp, color = Color(0xFFFF7043), fontWeight = FontWeight.Bold)
+                if (isMax) Text("MAX", fontSize = 9.sp, color = AccentBlueL, fontWeight = FontWeight.ExtraBold)
+                if (isMin) Text("MIN", fontSize = 9.sp, color = LoadOrange, fontWeight = FontWeight.ExtraBold)
             }
 
             Spacer(modifier = Modifier.height(4.dp))
@@ -529,7 +564,7 @@ fun OfficialCellCard(cell: CellData, isMin: Boolean, isMax: Boolean) {
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
-                color = Color.White
+                color = TextPrimary
             )
 
             Spacer(modifier = Modifier.height(4.dp))
@@ -539,8 +574,8 @@ fun OfficialCellCard(cell: CellData, isMin: Boolean, isMax: Boolean) {
             LinearProgressIndicator(
                 progress = { fillPercent },
                 modifier = Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)),
-                color = if (isMax) Color(0xFF29B6F6) else if (isMin) Color(0xFFFF7043) else Color(0xFF00E676),
-                trackColor = Color(0xFF263238)
+                color = if (isMax) AccentBlueL else if (isMin) LoadOrange else SolarGreen,
+                trackColor = Color(0xFF1E2D45)
             )
 
             Spacer(modifier = Modifier.height(3.dp))
@@ -548,7 +583,8 @@ fun OfficialCellCard(cell: CellData, isMin: Boolean, isMax: Boolean) {
             Text(
                 text = if (cell.resistance != null && cell.resistance > 0f) "${String.format("%.1f", cell.resistance)} mΩ" else "0.3 mΩ",
                 fontSize = 9.sp,
-                color = Color.Gray
+                color = TextMuted,
+                fontFamily = FontFamily.Monospace
             )
         }
     }
@@ -567,20 +603,20 @@ fun JkSafetyLimitsTab(bms: BmsData) {
     ) {
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E2433)),
-            border = BorderStroke(1.dp, Color(0xFF3949AB).copy(alpha = 0.5f)),
-            shape = RoundedCornerShape(10.dp)
+            colors = CardDefaults.cardColors(containerColor = BgCard),
+            border = BorderStroke(1.dp, AccentBlue.copy(alpha = 0.4f)),
+            shape = RoundedCornerShape(12.dp)
         ) {
             Column(modifier = Modifier.padding(14.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("ℹ️", fontSize = 14.sp)
-                    Text("PROGRAMMED BMS PARAMETERS", color = Color(0xFF90CAF9), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Text("PROGRAMMED BMS PARAMETERS", color = AccentBlueL, fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 0.5.sp)
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     "These thresholds are retrieved directly from your JK BMS EEPROM registers. Parameter writing is disabled for inverter safety.",
-                    color = Color.LightGray,
-                    fontSize = 10.sp
+                    color = TextMuted,
+                    fontSize = 11.sp
                 )
             }
         }
@@ -621,19 +657,20 @@ fun JkSafetyLimitsTab(bms: BmsData) {
 fun OfficialParameterGroup(title: String, items: List<Pair<String, String>>) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF171B26)),
-        shape = RoundedCornerShape(10.dp)
+        colors = CardDefaults.cardColors(containerColor = BgCard),
+        border = BorderStroke(1.dp, CardBorder),
+        shape = RoundedCornerShape(12.dp)
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(title, color = Color(0xFF64FFDA), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            HorizontalDivider(color = Color(0xFF263238), thickness = 0.5.dp)
+            Text(title, color = AccentBlueL, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+            HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
             items.forEach { (label, value) ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(label, color = Color.LightGray, fontSize = 12.sp)
-                    Text(value, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                    Text(label, color = TextSecondary, fontSize = 12.sp)
+                    Text(value, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
                 }
             }
         }
@@ -647,7 +684,7 @@ fun OfficialParameterGroup(title: String, items: List<Pair<String, String>>) {
 fun OfficialMetricItem(
     label: String,
     value: String,
-    valueColor: Color = Color.White,
+    valueColor: Color = TextPrimary,
     modifier: Modifier = Modifier,
     alignEnd: Boolean = false
 ) {
@@ -657,8 +694,10 @@ fun OfficialMetricItem(
     ) {
         Text(
             text = label,
-            fontSize = 10.sp,
-            color = Color.Gray,
+            fontSize = 9.sp,
+            color = TextMuted,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.5.sp,
             textAlign = if (alignEnd) TextAlign.End else TextAlign.Start
         )
         Text(
@@ -682,24 +721,24 @@ fun OfficialMosIndicator(
 ) {
     Box(
         modifier = modifier
-            .background(Color(0xFF1B222E), RoundedCornerShape(8.dp))
-            .border(1.dp, if (isActive) Color(0xFF00E676).copy(alpha = 0.4f) else Color(0xFFFF5252).copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+            .background(BgCardAlt, RoundedCornerShape(10.dp))
+            .border(1.dp, if (isActive) SolarGreen.copy(alpha = 0.4f) else ErrorRed.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
             .padding(vertical = 8.dp, horizontal = 6.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(label, fontSize = 9.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+            Text(label, fontSize = 9.sp, color = TextMuted, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 Box(
                     modifier = Modifier
                         .size(6.dp)
-                        .background(if (isActive) Color(0xFF00E676) else Color(0xFFFF5252), CircleShape)
+                        .background(if (isActive) SolarGreen else ErrorRed, CircleShape)
                 )
                 Text(
                     text = if (isActive) activeText else inactiveText,
                     fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isActive) Color(0xFF00E676) else Color(0xFFFF5252)
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (isActive) SolarGreen else ErrorRed
                 )
             }
         }
