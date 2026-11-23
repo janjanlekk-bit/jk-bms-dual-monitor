@@ -16,8 +16,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -192,386 +195,895 @@ fun EnergyFlowDiagram(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(410.dp),
+            .height(430.dp),
         colors = CardDefaults.cardColors(containerColor = BgCard),
         border = BorderStroke(1.dp, CardBorder),
         shape = RoundedCornerShape(20.dp)
     ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 14.dp)) {
             val width = constraints.maxWidth.toFloat()
             val height = constraints.maxHeight.toFloat()
 
-            val solarCenter = Offset(width * 0.5f, height * 0.16f)
-            val hubCenter = Offset(width * 0.5f, height * 0.49f)
-            val batteryCenter = Offset(width * 0.23f, height * 0.81f)
-            val houseCenter = Offset(width * 0.77f, height * 0.81f)
+            // Key Conduit Coordinates (Stepped Circuit matching reference image)
+            val solarStart = Offset(width * 0.16f, height * 0.35f)
+            val solarCorner = Offset(width * 0.16f, height * 0.44f)
+            val solarEnd = Offset(width * 0.37f, height * 0.44f)
 
-            // 1. Canvas Layer: Renders Animated Flow Lines & Particles
+            val houseStart = Offset(width * 0.84f, height * 0.35f)
+            val houseCorner = Offset(width * 0.84f, height * 0.44f)
+            val houseEnd = Offset(width * 0.63f, height * 0.44f)
+
+            val batteryStart = Offset(width * 0.16f, height * 0.65f)
+            val batteryCorner = Offset(width * 0.16f, height * 0.54f)
+            val batteryEnd = Offset(width * 0.37f, height * 0.54f)
+
+            // 1. Canvas Layer: Renders Stepped Dashed Conduits, Dot Indicators & Animated Particles
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val baseTrackColor = Color(0xFF1E2D45)
-                val strokeWidthPx = 4.dp.toPx()
-                val dashEffect = PathEffect.dashPathEffect(floatArrayOf(16f, 16f), 0f)
+                val strokeWidthPx = 3.dp.toPx()
+                val dashEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 12f), 0f)
 
-                // Line 1: Solar to Hub
+                // Conduit 1: Solar to Inverter (Blue line)
+                val solarTrackColor = if (isCharging) Color(0xFF2979FF).copy(alpha = 0.5f) else baseTrackColor
                 drawLine(
-                    color = if (isCharging) SolarGreen.copy(alpha = 0.35f) else baseTrackColor,
-                    start = solarCenter,
-                    end = hubCenter,
+                    color = solarTrackColor,
+                    start = solarStart,
+                    end = solarCorner,
                     strokeWidth = strokeWidthPx,
                     pathEffect = dashEffect,
                     cap = StrokeCap.Round
                 )
-
-                // Line 2: Hub to Battery
                 drawLine(
-                    color = if (isCharging) SolarGreen.copy(alpha = 0.35f) else if (isDischarging) LoadOrange.copy(alpha = 0.35f) else baseTrackColor,
-                    start = hubCenter,
-                    end = batteryCenter,
+                    color = solarTrackColor,
+                    start = solarCorner,
+                    end = solarEnd,
                     strokeWidth = strokeWidthPx,
                     pathEffect = dashEffect,
                     cap = StrokeCap.Round
                 )
+                // Solid Blue Dot Indicator on Solar line (matching image)
+                drawCircle(
+                    color = Color(0xFF2979FF),
+                    radius = 4.5f.dp.toPx(),
+                    center = Offset(solarStart.x, (solarStart.y + solarCorner.y) / 2f)
+                )
 
-                // Line 3: Hub to House
+                // Conduit 2: House to Inverter (Red line)
+                val houseTrackColor = if (isDischarging) Color(0xFFFF5252).copy(alpha = 0.5f) else baseTrackColor
                 drawLine(
-                    color = if (isDischarging) LoadOrange.copy(alpha = 0.35f) else if (isCharging) SolarGreen.copy(alpha = 0.25f) else baseTrackColor,
-                    start = hubCenter,
-                    end = houseCenter,
+                    color = houseTrackColor,
+                    start = houseStart,
+                    end = houseCorner,
                     strokeWidth = strokeWidthPx,
                     pathEffect = dashEffect,
                     cap = StrokeCap.Round
+                )
+                drawLine(
+                    color = houseTrackColor,
+                    start = houseCorner,
+                    end = houseEnd,
+                    strokeWidth = strokeWidthPx,
+                    pathEffect = dashEffect,
+                    cap = StrokeCap.Round
+                )
+                // Solid Red Dot Indicator on House line (matching image)
+                drawCircle(
+                    color = Color(0xFFFF5252),
+                    radius = 4.5f.dp.toPx(),
+                    center = Offset((houseCorner.x + houseEnd.x) / 2f, houseCorner.y)
+                )
+
+                // Conduit 3: Battery to Inverter (Green line)
+                val batteryTrackColor = if (isCharging || isDischarging) Color(0xFF00E676).copy(alpha = 0.5f) else baseTrackColor
+                drawLine(
+                    color = batteryTrackColor,
+                    start = batteryStart,
+                    end = batteryCorner,
+                    strokeWidth = strokeWidthPx,
+                    pathEffect = dashEffect,
+                    cap = StrokeCap.Round
+                )
+                drawLine(
+                    color = batteryTrackColor,
+                    start = batteryCorner,
+                    end = batteryEnd,
+                    strokeWidth = strokeWidthPx,
+                    pathEffect = dashEffect,
+                    cap = StrokeCap.Round
+                )
+                // Solid Green Dot Indicator on Battery line (matching image)
+                drawCircle(
+                    color = Color(0xFF00E676),
+                    radius = 4.5f.dp.toPx(),
+                    center = Offset((batteryCorner.x + batteryEnd.x) / 2f, batteryCorner.y)
                 )
 
                 // Animated Flow Particles
                 if (isCharging) {
-                    // Flow A: Solar -> Hub (Downward)
-                    drawFlowParticles(
-                        start = solarCenter,
-                        end = hubCenter,
+                    // Flow: Solar -> Inverter (stepped)
+                    drawSteppedFlowParticles(
+                        start = solarStart,
+                        corner = solarCorner,
+                        end = solarEnd,
                         progress = flowProgress,
-                        particleColor = SolarGreen,
-                        count = 4
+                        particleColor = Color(0xFF2979FF),
+                        count = 3
                     )
-                    // Flow B: Hub -> Battery (Down-Left)
-                    drawFlowParticles(
-                        start = hubCenter,
-                        end = batteryCenter,
+                    // Flow: Inverter -> Battery (stepped, reversed: batteryEnd -> batteryCorner -> batteryStart)
+                    drawSteppedFlowParticles(
+                        start = batteryEnd,
+                        corner = batteryCorner,
+                        end = batteryStart,
                         progress = flowProgress,
-                        particleColor = SolarGreen,
-                        count = 4
+                        particleColor = Color(0xFF00E676),
+                        count = 3
                     )
                 } else if (isDischarging) {
-                    // Flow C: Battery -> Hub (Up-Right)
-                    drawFlowParticles(
-                        start = batteryCenter,
-                        end = hubCenter,
+                    // Flow: Battery -> Inverter (batteryStart -> batteryCorner -> batteryEnd)
+                    drawSteppedFlowParticles(
+                        start = batteryStart,
+                        corner = batteryCorner,
+                        end = batteryEnd,
                         progress = flowProgress,
-                        particleColor = LoadOrange,
-                        count = 4
+                        particleColor = Color(0xFFFF9100),
+                        count = 3
                     )
-                    // Flow D: Hub -> House (Down-Right)
-                    drawFlowParticles(
-                        start = hubCenter,
-                        end = houseCenter,
+                    // Flow: Inverter -> House (houseEnd -> houseCorner -> houseStart)
+                    drawSteppedFlowParticles(
+                        start = houseEnd,
+                        corner = houseCorner,
+                        end = houseStart,
                         progress = flowProgress,
-                        particleColor = LoadOrange,
-                        count = 4
+                        particleColor = Color(0xFFFF5252),
+                        count = 3
                     )
                 }
             }
 
-            // 2. UI Nodes Layer
-            // Node 1: Solar Panels (Top)
-            Box(
+            // 2. Interactive UI Nodes (Arranged exactly like the reference image)
+            // Top Row: Solar Panel (Left) & House Load (Right)
+            Row(
                 modifier = Modifier
-                    .offset(x = 0.dp, y = 0.dp)
-                    .fillMaxWidth(),
-                contentAlignment = Alignment.TopCenter
+                    .fillMaxWidth()
+                    .align(Alignment.TopCenter),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                SolarNodeWidget(
-                    pvPower = pvPower,
-                    todayHarvestKwh = todayEnergy.chargedKwh,
-                    isGenerating = isCharging
+                // Top-Left: Solar Panel Icon + 4 lines of stats
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    SolarPanelWithSunIcon()
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = formatPower(pvPower),
+                            color = Color(0xFF2979FF),
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 14.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Text(
+                            text = String.format(Locale.US, "%.1f V", if (isCharging) bank.voltage else 0f),
+                            color = Color(0xFF40C4FF),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Text(
+                            text = String.format(Locale.US, "%.1f A", if (isCharging) abs(bank.current) else 0f),
+                            color = Color(0xFF40C4FF),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Text(
+                            text = String.format(Locale.US, "%.1f %%", bank.capacityWeightedSoc.toFloat()),
+                            color = Color(0xFF40C4FF),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+
+                // Top-Right: 4 lines of stats + House Load Icon
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = formatPower(houseLoadPower),
+                            color = Color(0xFFFF5252),
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 14.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Text(
+                            text = String.format(Locale.US, "%.0f VA", houseLoadPower * 1.05f),
+                            color = Color(0xFFFF8A80),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Text(
+                            text = String.format(Locale.US, "%.1f A", if (isDischarging) abs(bank.current) else 0f),
+                            color = Color(0xFFFF8A80),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Text(
+                            text = String.format(
+                                Locale.US,
+                                "%d %%",
+                                if (isDischarging) ((houseLoadPower / 3000f) * 100).toInt().coerceIn(0, 100) else 0
+                            ),
+                            color = Color(0xFFFF8A80),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                    HouseLoadIcon()
+                }
+            }
+
+            // Center Row: Inverter Hub with Frequency on Left & Voltage on Right
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.Center),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "60.0 HZ",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFCBD5E1),
+                    fontFamily = FontFamily.Monospace
+                )
+                Spacer(modifier = Modifier.width(14.dp))
+                InverterHubIcon()
+                Spacer(modifier = Modifier.width(14.dp))
+                Text(
+                    text = "230.0 V",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFCBD5E1),
+                    fontFamily = FontFamily.Monospace
                 )
             }
 
-            // Node 2: Smart DC Bus Hub (Center)
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                CenterHubWidget(isCharging = isCharging, isDischarging = isDischarging)
-            }
-
-            // Node 3: Battery Bank (Bottom Left)
-            Box(
+            // Bottom Row: Battery (Left) & Off-Grid Status (Right, no grid icon)
+            Row(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(bottom = 0.dp),
-                contentAlignment = Alignment.BottomStart
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                BatteryNodeWidget(
-                    bank = bank,
-                    b1 = b1,
-                    b2 = b2,
-                    isCharging = isCharging,
-                    isDischarging = isDischarging
-                )
-            }
+                // Bottom-Left: Segmented Battery Icon with status label + 4 lines of stats
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    SegmentedBatteryIcon(
+                        soc = bank.capacityWeightedSoc,
+                        isCharging = isCharging,
+                        isDischarging = isDischarging
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = String.format(Locale.US, "%.2f V", bank.voltage),
+                            color = Color(0xFF40C4FF),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Text(
+                            text = "${bank.capacityWeightedSoc} %",
+                            color = Color(0xFF40C4FF),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Text(
+                            text = String.format(Locale.US, "%.1f A", abs(bank.current)),
+                            color = if (isCharging) Color(0xFF00E676) else if (isDischarging) Color(0xFFFF9100) else Color(0xFF8F9BB3),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Text(
+                            text = formatPower(abs(bank.power)),
+                            color = if (isCharging) Color(0xFF00E676) else if (isDischarging) Color(0xFFFF9100) else Color(0xFF8F9BB3),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
 
-            // Node 4: House Load (Bottom Right)
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(bottom = 0.dp),
-                contentAlignment = Alignment.BottomEnd
-            ) {
-                HouseNodeWidget(
-                    loadPower = houseLoadPower,
-                    todayLoadKwh = todayEnergy.dischargedKwh,
-                    isConsuming = isDischarging
-                )
+                // Bottom-Right: 4 lines of readings + Clean Off-Grid Pill (No grid utility pole!)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = "230.0 V",
+                            color = Color(0xFF94A3B8),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Text(
+                            text = "60.0 HZ",
+                            color = Color(0xFF94A3B8),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Text(
+                            text = "0 A",
+                            color = Color(0xFF94A3B8),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Text(
+                            text = "0 W",
+                            color = Color(0xFF94A3B8),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                    Surface(
+                        color = Color(0xFF0D1E3A),
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, Color(0xFF1E3A5F))
+                    ) {
+                        Text(
+                            text = "☀️\nOFF-GRID",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF82B1FF),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                        )
+                    }
+                }
             }
         }
     }
 }
 
-// Particle rendering helper for animated energy currents
-fun DrawScope.drawFlowParticles(
+// Particle rendering helper for stepped energy conduits
+fun DrawScope.drawSteppedFlowParticles(
     start: Offset,
+    corner: Offset,
     end: Offset,
     progress: Float,
     particleColor: Color,
-    count: Int = 4
+    count: Int = 3
 ) {
+    val d1 = kotlin.math.hypot((corner.x - start.x).toDouble(), (corner.y - start.y).toDouble()).toFloat()
+    val d2 = kotlin.math.hypot((end.x - corner.x).toDouble(), (end.y - corner.y).toDouble()).toFloat()
+    val totalD = d1 + d2
+    if (totalD <= 0f) return
+
     for (i in 0 until count) {
         val t = (progress + (i.toFloat() / count.toFloat())) % 1.0f
-        val pos = Offset(
-            x = start.x + t * (end.x - start.x),
-            y = start.y + t * (end.y - start.y)
-        )
+        val curDist = t * totalD
+        val pos = if (curDist <= d1) {
+            val frac = if (d1 > 0f) curDist / d1 else 0f
+            Offset(start.x + frac * (corner.x - start.x), start.y + frac * (corner.y - start.y))
+        } else {
+            val frac = if (d2 > 0f) (curDist - d1) / d2 else 0f
+            Offset(corner.x + frac * (end.x - corner.x), corner.y + frac * (end.y - corner.y))
+        }
+
         // Radiant Outer Glow
         drawCircle(
             color = particleColor.copy(alpha = 0.35f),
-            radius = 7.dp.toPx(),
+            radius = 6.dp.toPx(),
             center = pos
         )
         // Bright Inner Core
         drawCircle(
             color = particleColor,
-            radius = 3.5f.dp.toPx(),
+            radius = 3.dp.toPx(),
             center = pos
         )
-        // Intense White Center Spark
+        // White Spark Center
+        drawCircle(
+            color = Color.White,
+            radius = 1.5f.dp.toPx(),
+            center = pos
+        )
+    }
+}
+
+// -------------------------------------------------------------
+// Illustrated Custom Vector Icons (matching user reference image)
+// -------------------------------------------------------------
+
+@Composable
+fun SolarPanelWithSunIcon(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier.size(width = 68.dp, height = 76.dp)) {
+        val w = size.width
+        val h = size.height
+
+        // 1. Sun at Top-Left of the panel
+        val sunCenter = Offset(w * 0.20f, h * 0.18f)
+        val sunRadius = 6.5f.dp.toPx()
+        for (i in 0 until 8) {
+            val angle = (i * 45) * (Math.PI / 180.0)
+            val r1 = sunRadius + 2.dp.toPx()
+            val r2 = sunRadius + 5.5f.dp.toPx()
+            val start = Offset(
+                (sunCenter.x + r1 * Math.cos(angle)).toFloat(),
+                (sunCenter.y + r1 * Math.sin(angle)).toFloat()
+            )
+            val end = Offset(
+                (sunCenter.x + r2 * Math.cos(angle)).toFloat(),
+                (sunCenter.y + r2 * Math.sin(angle)).toFloat()
+            )
+            drawLine(
+                color = Color(0xFFFFA000),
+                start = start,
+                end = end,
+                strokeWidth = 1.8f.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+        }
+        drawCircle(
+            color = Color(0xFFFFB300),
+            radius = sunRadius,
+            center = sunCenter
+        )
+        drawCircle(
+            color = Color(0xFFFFE082),
+            radius = sunRadius * 0.65f,
+            center = sunCenter
+        )
+
+        // 2. Stand & Legs at bottom
+        val legColor = Color(0xFF78909C)
+        val legStroke = 2.5f.dp.toPx()
+        drawLine(
+            color = legColor,
+            start = Offset(w * 0.35f, h * 0.72f),
+            end = Offset(w * 0.35f, h * 0.88f),
+            strokeWidth = legStroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = legColor,
+            start = Offset(w * 0.65f, h * 0.72f),
+            end = Offset(w * 0.65f, h * 0.88f),
+            strokeWidth = legStroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = Color(0xFF90A4AE),
+            start = Offset(w * 0.22f, h * 0.88f),
+            end = Offset(w * 0.78f, h * 0.88f),
+            strokeWidth = 3.dp.toPx(),
+            cap = StrokeCap.Round
+        )
+
+        // 3. Tilted Solar Panel with Grid Cells
+        val topLeft = Offset(w * 0.22f, h * 0.22f)
+        val topRight = Offset(w * 0.90f, h * 0.22f)
+        val bottomRight = Offset(w * 0.96f, h * 0.72f)
+        val bottomLeft = Offset(w * 0.16f, h * 0.72f)
+
+        val panelPath = Path().apply {
+            moveTo(topLeft.x, topLeft.y)
+            lineTo(topRight.x, topRight.y)
+            lineTo(bottomRight.x, bottomRight.y)
+            lineTo(bottomLeft.x, bottomLeft.y)
+            close()
+        }
+
+        drawPath(path = panelPath, color = Color(0xFF0D47A1))
+        drawPath(path = panelPath, color = Color(0xFFCFD8DC), style = Stroke(width = 2.5f.dp.toPx()))
+
+        val gridColor = Color(0xFF90CAF9).copy(alpha = 0.85f)
+        val gridStroke = 1.2f.dp.toPx()
+
+        for (col in 1..3) {
+            val frac = col / 4f
+            val topP = Offset(
+                topLeft.x + frac * (topRight.x - topLeft.x),
+                topLeft.y + frac * (topRight.y - topLeft.y)
+            )
+            val botP = Offset(
+                bottomLeft.x + frac * (bottomRight.x - bottomLeft.x),
+                bottomLeft.y + frac * (bottomRight.y - bottomLeft.y)
+            )
+            drawLine(color = gridColor, start = topP, end = botP, strokeWidth = gridStroke)
+        }
+
+        for (row in 1..5) {
+            val frac = row / 6f
+            val leftP = Offset(
+                topLeft.x + frac * (bottomLeft.x - topLeft.x),
+                topLeft.y + frac * (bottomLeft.y - topLeft.y)
+            )
+            val rightP = Offset(
+                topRight.x + frac * (bottomRight.x - topRight.x),
+                topRight.y + frac * (bottomRight.y - topRight.y)
+            )
+            drawLine(color = gridColor, start = leftP, end = rightP, strokeWidth = gridStroke)
+        }
+
+        for (col in 1..3) {
+            val fracC = col / 4f
+            for (row in 1..5) {
+                val fracR = row / 6f
+                val topP = Offset(
+                    topLeft.x + fracC * (topRight.x - topLeft.x),
+                    topLeft.y + fracC * (topRight.y - topLeft.y)
+                )
+                val botP = Offset(
+                    bottomLeft.x + fracC * (bottomRight.x - bottomLeft.x),
+                    bottomLeft.y + fracC * (bottomRight.y - bottomLeft.y)
+                )
+                val dotX = topP.x + fracR * (botP.x - topP.x)
+                val dotY = topP.y + fracR * (botP.y - topP.y)
+                drawCircle(color = Color.White, radius = 1.2f.dp.toPx(), center = Offset(dotX, dotY))
+            }
+        }
+    }
+}
+
+@Composable
+fun HouseLoadIcon(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier.size(width = 72.dp, height = 76.dp)) {
+        val w = size.width
+        val h = size.height
+
+        // 1. Chimney on Right
+        val chimneyLeft = w * 0.74f
+        val chimneyTop = h * 0.12f
+        val chimneyWidth = w * 0.12f
+        val chimneyHeight = h * 0.22f
+        drawRect(
+            color = Color(0xFF455A64),
+            topLeft = Offset(chimneyLeft, chimneyTop),
+            size = Size(chimneyWidth, chimneyHeight)
+        )
+        drawRoundRect(
+            color = Color(0xFF263238),
+            topLeft = Offset(chimneyLeft - w * 0.02f, chimneyTop - h * 0.03f),
+            size = Size(chimneyWidth + w * 0.04f, h * 0.04f),
+            cornerRadius = CornerRadius(2.dp.toPx())
+        )
+
+        // 2. House Walls
+        val wallLeft = w * 0.18f
+        val wallTop = h * 0.44f
+        val wallWidth = w * 0.64f
+        val wallHeight = h * 0.44f
+        drawRect(
+            color = Color(0xFFF1F5F9),
+            topLeft = Offset(wallLeft, wallTop),
+            size = Size(wallWidth, wallHeight)
+        )
+
+        // 3. Gable Attic Wall
+        val roofPeak = Offset(w * 0.50f, h * 0.14f)
+        val eaveLeft = Offset(w * 0.10f, h * 0.44f)
+        val eaveRight = Offset(w * 0.90f, h * 0.44f)
+
+        val gablePath = Path().apply {
+            moveTo(roofPeak.x, roofPeak.y)
+            lineTo(eaveRight.x, eaveRight.y)
+            lineTo(eaveLeft.x, eaveLeft.y)
+            close()
+        }
+        drawPath(path = gablePath, color = Color(0xFFF8FAFC))
+
+        // 4. Red Roof Overhang
+        val roofThickness = 4.dp.toPx()
+        val roofPath = Path().apply {
+            moveTo(roofPeak.x, roofPeak.y)
+            lineTo(eaveRight.x, eaveRight.y)
+            lineTo(eaveRight.x + w * 0.03f, eaveRight.y + h * 0.02f)
+            lineTo(roofPeak.x, roofPeak.y - h * 0.02f)
+            lineTo(eaveLeft.x - w * 0.03f, eaveLeft.y + h * 0.02f)
+            lineTo(eaveLeft.x, eaveLeft.y)
+            close()
+        }
+        drawPath(path = roofPath, color = Color(0xFFEF5350))
+        drawLine(
+            color = Color(0xFFD32F2F),
+            start = Offset(eaveLeft.x - w * 0.02f, eaveLeft.y),
+            end = roofPeak,
+            strokeWidth = roofThickness,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = Color(0xFFD32F2F),
+            start = roofPeak,
+            end = Offset(eaveRight.x + w * 0.02f, eaveRight.y),
+            strokeWidth = roofThickness,
+            cap = StrokeCap.Round
+        )
+
+        // 5. Red Lightning Bolts in Gable Attic
+        val bolt1Path = Path().apply {
+            moveTo(w * 0.43f, h * 0.28f)
+            lineTo(w * 0.38f, h * 0.35f)
+            lineTo(w * 0.43f, h * 0.35f)
+            lineTo(w * 0.40f, h * 0.41f)
+            lineTo(w * 0.48f, h * 0.33f)
+            lineTo(w * 0.44f, h * 0.33f)
+            close()
+        }
+        drawPath(path = bolt1Path, color = Color(0xFFE53935))
+
+        val bolt2Path = Path().apply {
+            moveTo(w * 0.57f, h * 0.28f)
+            lineTo(w * 0.52f, h * 0.35f)
+            lineTo(w * 0.57f, h * 0.35f)
+            lineTo(w * 0.54f, h * 0.41f)
+            lineTo(w * 0.62f, h * 0.33f)
+            lineTo(w * 0.58f, h * 0.33f)
+            close()
+        }
+        drawPath(path = bolt2Path, color = Color(0xFFE53935))
+
+        // 6. Brown Front Door
+        val doorLeft = w * 0.25f
+        val doorTop = h * 0.52f
+        val doorWidth = w * 0.22f
+        val doorHeight = h * 0.36f
+        drawRoundRect(
+            color = Color(0xFF8D6E63),
+            topLeft = Offset(doorLeft, doorTop),
+            size = Size(doorWidth, doorHeight),
+            cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
+        )
         drawCircle(
             color = Color.White,
             radius = 1.8f.dp.toPx(),
-            center = pos
+            center = Offset(doorLeft + doorWidth * 0.75f, doorTop + doorHeight * 0.5f)
+        )
+
+        // 7. Cyan 4-Pane Window
+        val winLeft = w * 0.54f
+        val winTop = h * 0.52f
+        val winWidth = w * 0.22f
+        val winHeight = h * 0.26f
+        drawRoundRect(
+            color = Color(0xFF00B0FF),
+            topLeft = Offset(winLeft, winTop),
+            size = Size(winWidth, winHeight),
+            cornerRadius = CornerRadius(2.dp.toPx())
+        )
+        drawLine(
+            color = Color.White,
+            start = Offset(winLeft, winTop + winHeight * 0.5f),
+            end = Offset(winLeft + winWidth, winTop + winHeight * 0.5f),
+            strokeWidth = 1.5f.dp.toPx()
+        )
+        drawLine(
+            color = Color.White,
+            start = Offset(winLeft + winWidth * 0.5f, winTop),
+            end = Offset(winLeft + winWidth * 0.5f, winTop + winHeight),
+            strokeWidth = 1.5f.dp.toPx()
+        )
+
+        // 8. Green Lawn Base
+        drawRoundRect(
+            color = Color(0xFF00C853),
+            topLeft = Offset(w * 0.12f, h * 0.88f),
+            size = Size(w * 0.76f, h * 0.05f),
+            cornerRadius = CornerRadius(2.5f.dp.toPx())
         )
     }
 }
 
 @Composable
-fun SolarNodeWidget(
-    pvPower: Float,
-    todayHarvestKwh: Float,
-    isGenerating: Boolean
-) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = BgCardAlt),
-        border = BorderStroke(1.dp, if (isGenerating) SolarGreen.copy(alpha = 0.5f) else CardBorder),
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.width(170.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text("☀️", fontSize = 16.sp)
-                Text(
-                    text = "SOLAR PV",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isGenerating) SolarGreen else TextSecondary,
-                    letterSpacing = 1.sp
-                )
-            }
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = if (isGenerating) formatPower(pvPower) else "0 W",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.ExtraBold,
-                color = if (isGenerating) SolarGreen else TextPrimary,
-                fontFamily = FontFamily.Monospace
-            )
-            Text(
-                text = "Day: ${formatEnergy(todayHarvestKwh)}",
-                style = MaterialTheme.typography.labelSmall,
-                fontSize = 10.sp,
-                color = TextSecondary
-            )
+fun InverterHubIcon(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier.size(76.dp)) {
+        val w = size.width
+        val h = size.height
+        val center = Offset(w / 2f, h / 2f)
+
+        // 1. Circular Halo Badge
+        drawCircle(
+            color = Color(0xFFE2E8F0),
+            radius = w * 0.48f,
+            center = center
+        )
+        drawCircle(
+            color = Color(0xFFCBD5E1),
+            radius = w * 0.48f,
+            center = center,
+            style = Stroke(width = 2.dp.toPx())
+        )
+
+        // 2. Wall Mounted Inverter Body
+        val invWidth = w * 0.46f
+        val invHeight = h * 0.58f
+        val invLeft = center.x - invWidth / 2f
+        val invTop = center.y - invHeight / 2f
+
+        drawRoundRect(
+            color = Color(0xFF0F172A),
+            topLeft = Offset(invLeft, invTop),
+            size = Size(invWidth, invHeight),
+            cornerRadius = CornerRadius(7.dp.toPx())
+        )
+
+        // 3. Inverter Top Screen / Display
+        val screenMargin = 3.5f.dp.toPx()
+        val screenHeight = invHeight * 0.38f
+        drawRoundRect(
+            color = Color(0xFF020617),
+            topLeft = Offset(invLeft + screenMargin, invTop + screenMargin),
+            size = Size(invWidth - screenMargin * 2, screenHeight),
+            cornerRadius = CornerRadius(3.dp.toPx())
+        )
+
+        // Display Status Dots & Line
+        val ledY = invTop + screenMargin + screenHeight * 0.4f
+        drawCircle(
+            color = Color(0xFF22C55E),
+            radius = 1.4f.dp.toPx(),
+            center = Offset(center.x - 5.dp.toPx(), ledY)
+        )
+        drawCircle(
+            color = Color(0xFF38BDF8),
+            radius = 1.4f.dp.toPx(),
+            center = Offset(center.x + 5.dp.toPx(), ledY)
+        )
+        drawLine(
+            color = Color(0xFF94A3B8),
+            start = Offset(center.x - 7.dp.toPx(), ledY + 4.dp.toPx()),
+            end = Offset(center.x + 7.dp.toPx(), ledY + 4.dp.toPx()),
+            strokeWidth = 1.2f.dp.toPx()
+        )
+
+        // 4. Lower Seam Divider
+        drawLine(
+            color = Color(0xFF334155),
+            start = Offset(invLeft, invTop + invHeight * 0.52f),
+            end = Offset(invLeft + invWidth, invTop + invHeight * 0.52f),
+            strokeWidth = 1.5f.dp.toPx()
+        )
+
+        // 5. White Lightning Bolt on Lower Compartment
+        val boltY = invTop + invHeight * 0.72f
+        val boltPath = Path().apply {
+            moveTo(center.x, boltY - 6.dp.toPx())
+            lineTo(center.x - 4.dp.toPx(), boltY)
+            lineTo(center.x - 0.5f.dp.toPx(), boltY)
+            lineTo(center.x - 2.dp.toPx(), boltY + 6.dp.toPx())
+            lineTo(center.x + 5.dp.toPx(), boltY - 1.dp.toPx())
+            lineTo(center.x + 1.dp.toPx(), boltY - 1.dp.toPx())
+            close()
         }
+        drawPath(path = boltPath, color = Color.White)
     }
 }
 
 @Composable
-fun CenterHubWidget(isCharging: Boolean, isDischarging: Boolean) {
-    val hubColor = when {
-        isCharging -> SolarGreen
-        isDischarging -> LoadOrange
-        else -> AccentBlue
-    }
-
-    Box(
-        modifier = Modifier
-            .size(54.dp)
-            .clip(CircleShape)
-            .background(BgCardAlt)
-            .border(2.dp, hubColor, CircleShape),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("⚡", fontSize = 18.sp)
-            Text("DC BUS", fontSize = 8.sp, fontWeight = FontWeight.ExtraBold, color = hubColor, letterSpacing = 0.5.sp)
-        }
-    }
-}
-
-@Composable
-fun BatteryNodeWidget(
-    bank: TotalBankData,
-    b1: BmsData,
-    b2: BmsData,
+fun SegmentedBatteryIcon(
+    soc: Int,
     isCharging: Boolean,
-    isDischarging: Boolean
+    isDischarging: Boolean,
+    modifier: Modifier = Modifier
 ) {
-    val soc = bank.capacityWeightedSoc.coerceIn(0, 100)
-    // Updated threshold per user request: Green > 50%, Amber > 10%, Red <= 10%
-    val socColor = when {
-        soc > 50 -> SolarGreen
-        soc > 10 -> CautionYellow
-        else     -> ErrorRed
-    }
-
-    val accentColor = when {
-        isCharging -> SolarGreen
-        isDischarging -> LoadOrange
-        else -> AccentBlue
-    }
-
-    Card(
-        colors = CardDefaults.cardColors(containerColor = BgCardAlt),
-        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.5f)),
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.width(160.dp)
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text("🔋", fontSize = 16.sp)
-                Text(
-                    text = "BATTERY",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = accentColor,
-                    letterSpacing = 1.sp
-                )
-            }
-            Spacer(modifier = Modifier.height(2.dp))
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(
-                    text = "$soc",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = socColor,
-                    fontFamily = FontFamily.Monospace
-                )
-                Text(
-                    text = "%",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = socColor,
-                    modifier = Modifier.padding(bottom = 2.dp, start = 2.dp)
-                )
-            }
-            Text(
-                text = String.format(Locale.US, "%.1fV • %.1fA", bank.voltage, bank.current),
-                style = MaterialTheme.typography.labelSmall,
-                fontSize = 10.sp,
-                color = TextSecondary,
-                fontFamily = FontFamily.Monospace
-            )
-            Text(
-                text = "B1:${b1.soc}% • B2:${b2.soc}%",
-                style = MaterialTheme.typography.labelSmall,
-                fontSize = 9.sp,
-                color = TextMuted,
-                fontFamily = FontFamily.Monospace
-            )
-        }
-    }
-}
+        Canvas(modifier = Modifier.size(width = 46.dp, height = 76.dp)) {
+            val w = size.width
+            val h = size.height
 
-@Composable
-fun HouseNodeWidget(
-    loadPower: Float,
-    todayLoadKwh: Float,
-    isConsuming: Boolean
-) {
-    val accentColor = if (isConsuming) LoadOrange else CardBorder
+            // 1. Top Terminal Nub
+            val nubWidth = w * 0.32f
+            val nubHeight = h * 0.06f
+            drawRoundRect(
+                color = Color(0xFF475569),
+                topLeft = Offset((w - nubWidth) / 2f, 0f),
+                size = Size(nubWidth, nubHeight + 2.dp.toPx()),
+                cornerRadius = CornerRadius(2.dp.toPx())
+            )
 
-    Card(
-        colors = CardDefaults.cardColors(containerColor = BgCardAlt),
-        border = BorderStroke(1.dp, accentColor),
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.width(160.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text("🏠", fontSize = 16.sp)
-                Text(
-                    text = "HOUSE LOAD",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isConsuming) LoadOrange else TextSecondary,
-                    letterSpacing = 1.sp
+            // 2. Battery Outer Capsule
+            val bodyLeft = 2.dp.toPx()
+            val bodyTop = nubHeight
+            val bodyWidth = w - 4.dp.toPx()
+            val bodyHeight = h - nubHeight - 2.dp.toPx()
+            val cornerRadius = CornerRadius(8.dp.toPx())
+
+            drawRoundRect(
+                color = Color(0xFF0F172A),
+                topLeft = Offset(bodyLeft, bodyTop),
+                size = Size(bodyWidth, bodyHeight),
+                cornerRadius = cornerRadius
+            )
+            drawRoundRect(
+                color = Color(0xFF475569),
+                topLeft = Offset(bodyLeft, bodyTop),
+                size = Size(bodyWidth, bodyHeight),
+                cornerRadius = cornerRadius,
+                style = Stroke(width = 2.5f.dp.toPx())
+            )
+
+            // 3. Segmented Horizontal Charge Bars (5 bars)
+            val barCount = 5
+            val paddingH = 4.5f.dp.toPx()
+            val barWidth = bodyWidth - paddingH * 2
+            val totalBarSpace = bodyHeight - 10.dp.toPx()
+            val gap = 3.dp.toPx()
+            val barHeight = (totalBarSpace - (gap * (barCount - 1))) / barCount
+
+            val activeBars = when {
+                soc >= 90 -> 5
+                soc >= 70 -> 4
+                soc >= 45 -> 3
+                soc >= 20 -> 2
+                soc > 0   -> 1
+                else      -> 0
+            }
+
+            // Green > 50%, Amber > 10%, Red <= 10%
+            val barColor = when {
+                soc > 50 -> Color(0xFF00E676)
+                soc > 10 -> Color(0xFFFFD600)
+                else     -> Color(0xFFFF1744)
+            }
+
+            for (i in 0 until barCount) {
+                val isLit = (i < activeBars)
+                val barTop = (bodyTop + bodyHeight - 5.dp.toPx()) - ((i + 1) * barHeight) - (i * gap)
+
+                drawRoundRect(
+                    color = if (isLit) barColor else Color(0xFF1E293B),
+                    topLeft = Offset(bodyLeft + paddingH, barTop),
+                    size = Size(barWidth, barHeight),
+                    cornerRadius = CornerRadius(2.5f.dp.toPx())
                 )
             }
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = if (isConsuming) formatPower(loadPower) else "0 W",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.ExtraBold,
-                color = if (isConsuming) LoadOrange else TextPrimary,
-                fontFamily = FontFamily.Monospace
-            )
-            Text(
-                text = "Day: ${formatEnergy(todayLoadKwh)}",
-                style = MaterialTheme.typography.labelSmall,
-                fontSize = 10.sp,
-                color = TextSecondary
-            )
-            Text(
-                text = if (isConsuming) "Battery Discharging" else "Standby / Floating",
-                style = MaterialTheme.typography.labelSmall,
-                fontSize = 9.sp,
-                color = TextMuted
-            )
         }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        val stateText = when {
+            isCharging -> "Charging"
+            isDischarging -> "Discharging"
+            else -> "Standby"
+        }
+        val stateColor = when {
+            isCharging -> Color(0xFF00E676)
+            isDischarging -> Color(0xFFFF9100)
+            else -> Color(0xFF82B1FF)
+        }
+        Text(
+            text = stateText,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = stateColor,
+            textAlign = TextAlign.Center
+        )
     }
 }
 
