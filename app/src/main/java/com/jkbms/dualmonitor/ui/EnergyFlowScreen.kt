@@ -195,27 +195,14 @@ fun EnergyFlowDiagram(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(380.dp),
+            .height(370.dp),
         colors = CardDefaults.cardColors(containerColor = BgCard),
         border = BorderStroke(1.dp, CardBorder),
         shape = RoundedCornerShape(20.dp)
     ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 14.dp)) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 12.dp)) {
             val width = constraints.maxWidth.toFloat()
             val height = constraints.maxHeight.toFloat()
-
-            // Key Conduit Coordinates (Stepped Circuit matching reference image)
-            val solarStart = Offset(width * 0.16f, height * 0.30f)
-            val solarCorner = Offset(width * 0.16f, height * 0.44f)
-            val solarEnd = Offset(width * 0.37f, height * 0.44f)
-
-            val houseStart = Offset(width * 0.84f, height * 0.30f)
-            val houseCorner = Offset(width * 0.84f, height * 0.44f)
-            val houseEnd = Offset(width * 0.63f, height * 0.44f)
-
-            val batteryStart = Offset(width * 0.16f, height * 0.70f)
-            val batteryCorner = Offset(width * 0.16f, height * 0.56f)
-            val batteryEnd = Offset(width * 0.37f, height * 0.56f)
 
             // 1. Canvas Layer: Renders Stepped Dashed Conduits & Animated Particles
             Canvas(modifier = Modifier.fillMaxSize()) {
@@ -223,7 +210,25 @@ fun EnergyFlowDiagram(
                 val strokeWidthPx = 3.dp.toPx()
                 val dashEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 12f), 0f)
 
-                // Conduit 1: Solar to Inverter (Blue line)
+                // Key Conduit Coordinates (Stepped Circuit 100% centered to each icon)
+                val leftColumnCenterX = 34.dp.toPx()
+                val rightColumnCenterX = width - 36.dp.toPx()
+                val inverterLeftX = width * 0.5f - 38.dp.toPx()
+                val inverterRightX = width * 0.5f + 38.dp.toPx()
+
+                val solarStart = Offset(leftColumnCenterX, 68.dp.toPx())
+                val solarCorner = Offset(leftColumnCenterX, height * 0.44f)
+                val solarEnd = Offset(inverterLeftX, height * 0.44f)
+
+                val houseStart = Offset(rightColumnCenterX, 70.dp.toPx())
+                val houseCorner = Offset(rightColumnCenterX, height * 0.44f)
+                val houseEnd = Offset(inverterRightX, height * 0.44f)
+
+                val batteryStart = Offset(leftColumnCenterX, height - 92.dp.toPx())
+                val batteryCorner = Offset(leftColumnCenterX, height * 0.56f)
+                val batteryEnd = Offset(inverterLeftX, height * 0.56f)
+
+                // Conduit 1: Solar to Inverter (Blue line, centered to solar panel)
                 val solarTrackColor = if (isCharging) Color(0xFF2979FF).copy(alpha = 0.5f) else baseTrackColor
                 drawLine(
                     color = solarTrackColor,
@@ -242,7 +247,7 @@ fun EnergyFlowDiagram(
                     cap = StrokeCap.Round
                 )
 
-                // Conduit 2: House to Inverter (Red line)
+                // Conduit 2: House to Inverter (Red line, centered to house)
                 val houseTrackColor = if (isDischarging) Color(0xFFFF5252).copy(alpha = 0.5f) else baseTrackColor
                 drawLine(
                     color = houseTrackColor,
@@ -261,7 +266,7 @@ fun EnergyFlowDiagram(
                     cap = StrokeCap.Round
                 )
 
-                // Conduit 3: Battery to Inverter (Green line)
+                // Conduit 3: Battery to Inverter (Green line, centered to battery)
                 val batteryTrackColor = if (isCharging || isDischarging) Color(0xFF00E676).copy(alpha = 0.5f) else baseTrackColor
                 drawLine(
                     color = batteryTrackColor,
@@ -322,7 +327,7 @@ fun EnergyFlowDiagram(
                 }
             }
 
-            // 2. Interactive UI Nodes (Arranged with clean right-aligned information)
+            // 2. Interactive UI Nodes (Arranged snug next to each icon, right-aligned)
             // Top Row: Solar Panel (Left) & House Load (Right)
             Row(
                 modifier = Modifier
@@ -331,7 +336,7 @@ fun EnergyFlowDiagram(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Top-Left: Solar Panel Icon + Power & Current (Right-Aligned)
+                // Top-Left: Solar Panel Icon + Power & Current snug next to icon
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -339,8 +344,7 @@ fun EnergyFlowDiagram(
                     SolarPanelWithSunIcon()
                     Column(
                         horizontalAlignment = Alignment.End,
-                        verticalArrangement = Arrangement.spacedBy(3.dp),
-                        modifier = Modifier.width(72.dp)
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
                         Text(
                             text = formatPower(pvPower),
@@ -363,15 +367,14 @@ fun EnergyFlowDiagram(
                     }
                 }
 
-                // Top-Right: Power & Current (Right-Aligned) + House Load Icon
+                // Top-Right: Power & Current snug next to House Load Icon
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Column(
                         horizontalAlignment = Alignment.End,
-                        verticalArrangement = Arrangement.spacedBy(3.dp),
-                        modifier = Modifier.width(72.dp)
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
                         Text(
                             text = formatPower(houseLoadPower),
@@ -414,7 +417,7 @@ fun EnergyFlowDiagram(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Bottom-Left: Segmented Battery Icon with status label + Power & Current (Right-Aligned)
+                // Bottom-Left: Segmented Battery Icon with status label + Power & Current snug next to icon
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -426,8 +429,7 @@ fun EnergyFlowDiagram(
                     )
                     Column(
                         horizontalAlignment = Alignment.End,
-                        verticalArrangement = Arrangement.spacedBy(3.dp),
-                        modifier = Modifier.width(72.dp)
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
                         Text(
                             text = formatPower(abs(bank.power)),
@@ -450,15 +452,14 @@ fun EnergyFlowDiagram(
                     }
                 }
 
-                // Bottom-Right: Voltage & Frequency (Right-Aligned) + Clean Off-Grid Pill
+                // Bottom-Right: Voltage & Frequency snug next to Clean Off-Grid Pill
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Column(
                         horizontalAlignment = Alignment.End,
-                        verticalArrangement = Arrangement.spacedBy(3.dp),
-                        modifier = Modifier.width(72.dp)
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
                         Text(
                             text = "230.0 V",
