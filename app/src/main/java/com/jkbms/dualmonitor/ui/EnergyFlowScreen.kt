@@ -195,7 +195,7 @@ fun EnergyFlowDiagram(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(365.dp),
+            .height(360.dp),
         colors = CardDefaults.cardColors(containerColor = BgCard),
         border = BorderStroke(1.dp, CardBorder),
         shape = RoundedCornerShape(20.dp)
@@ -210,7 +210,7 @@ fun EnergyFlowDiagram(
                 val strokeWidthPx = 3.dp.toPx()
                 val dashEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 12f), 0f)
 
-                // Key Conduit Coordinates (Stepped Circuit with clean gaps from icons)
+                // Key Conduit Coordinates (Stepped Circuit 100% centered to each icon with clear gaps)
                 val leftColumnCenterX = 34.dp.toPx()
                 val rightColumnCenterX = width - 36.dp.toPx()
                 val inverterLeftX = width * 0.5f - 44.dp.toPx()
@@ -225,7 +225,8 @@ fun EnergyFlowDiagram(
                 val houseCorner = Offset(rightColumnCenterX, height * 0.44f)
                 val houseEnd = Offset(inverterRightX, height * 0.44f)
 
-                val batteryStart = Offset(leftColumnCenterX, height - 106.dp.toPx())
+                // Distinct 24dp gap above battery top cap
+                val batteryStart = Offset(leftColumnCenterX, height - 116.dp.toPx())
                 val batteryCorner = Offset(leftColumnCenterX, height * 0.56f)
                 val batteryEnd = Offset(inverterLeftX, height * 0.56f)
 
@@ -923,10 +924,10 @@ fun SegmentedBatteryIcon(
     modifier: Modifier = Modifier
 ) {
     Column(
-        modifier = modifier,
+        modifier = modifier.width(68.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Canvas(modifier = Modifier.size(width = 46.dp, height = 76.dp)) {
+        Canvas(modifier = Modifier.size(width = 46.dp, height = 72.dp)) {
             val w = size.width
             val h = size.height
 
