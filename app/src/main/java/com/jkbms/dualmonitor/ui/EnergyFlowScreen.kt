@@ -195,7 +195,7 @@ fun EnergyFlowDiagram(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(370.dp),
+            .height(365.dp),
         colors = CardDefaults.cardColors(containerColor = BgCard),
         border = BorderStroke(1.dp, CardBorder),
         shape = RoundedCornerShape(20.dp)
@@ -210,21 +210,22 @@ fun EnergyFlowDiagram(
                 val strokeWidthPx = 3.dp.toPx()
                 val dashEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 12f), 0f)
 
-                // Key Conduit Coordinates (Stepped Circuit 100% centered to each icon)
+                // Key Conduit Coordinates (Stepped Circuit with clean gaps from icons)
                 val leftColumnCenterX = 34.dp.toPx()
                 val rightColumnCenterX = width - 36.dp.toPx()
-                val inverterLeftX = width * 0.5f - 38.dp.toPx()
-                val inverterRightX = width * 0.5f + 38.dp.toPx()
+                val inverterLeftX = width * 0.5f - 44.dp.toPx()
+                val inverterRightX = width * 0.5f + 44.dp.toPx()
 
-                val solarStart = Offset(leftColumnCenterX, 68.dp.toPx())
+                // Clean gap between icon and conduit line
+                val solarStart = Offset(leftColumnCenterX, 80.dp.toPx())
                 val solarCorner = Offset(leftColumnCenterX, height * 0.44f)
                 val solarEnd = Offset(inverterLeftX, height * 0.44f)
 
-                val houseStart = Offset(rightColumnCenterX, 70.dp.toPx())
+                val houseStart = Offset(rightColumnCenterX, 82.dp.toPx())
                 val houseCorner = Offset(rightColumnCenterX, height * 0.44f)
                 val houseEnd = Offset(inverterRightX, height * 0.44f)
 
-                val batteryStart = Offset(leftColumnCenterX, height - 92.dp.toPx())
+                val batteryStart = Offset(leftColumnCenterX, height - 106.dp.toPx())
                 val batteryCorner = Offset(leftColumnCenterX, height * 0.56f)
                 val batteryEnd = Offset(inverterLeftX, height * 0.56f)
 
