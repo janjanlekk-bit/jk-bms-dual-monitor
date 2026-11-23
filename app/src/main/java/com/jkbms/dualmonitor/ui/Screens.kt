@@ -109,9 +109,9 @@ fun DashboardScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -155,13 +155,8 @@ fun DashboardScreen(
                     )
                 }
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onViewHistory) {
-                    Text("📜", fontSize = 18.sp)
-                }
-                IconButton(onClick = { showGatewaySettingsDialog = true }) {
-                    Text("⚙️", fontSize = 18.sp)
-                }
+            IconButton(onClick = { showGatewaySettingsDialog = true }) {
+                Text("⚙️", fontSize = 18.sp)
             }
         }
 
@@ -507,7 +502,7 @@ fun TotalBankCard(bank: TotalBankData) {
         border = BorderStroke(1.dp, AccentBlue.copy(alpha = 0.3f)),
         shape = RoundedCornerShape(16.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(12.dp)) {
             // Header row
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -524,7 +519,7 @@ fun TotalBankCard(bank: TotalBankData) {
                     )
                     Text(
                         "Total System Status",
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         color = TextMuted
                     )
                 }
@@ -544,7 +539,7 @@ fun TotalBankCard(bank: TotalBankData) {
                             },
                             RoundedCornerShape(20.dp)
                         )
-                        .padding(horizontal = 12.dp, vertical = 5.dp)
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -577,7 +572,7 @@ fun TotalBankCard(bank: TotalBankData) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Main content: SOC gauge + right metrics
             Row(
@@ -586,11 +581,11 @@ fun TotalBankCard(bank: TotalBankData) {
             ) {
                 // LEFT: Circular SOC Arc Gauge
                 Box(
-                    modifier = Modifier.size(130.dp),
+                    modifier = Modifier.size(115.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Canvas(modifier = Modifier.fillMaxSize()) {
-                        val strokeWidth = 14.dp.toPx()
+                        val strokeWidth = 12.dp.toPx()
                         val radius = (size.minDimension - strokeWidth) / 2f
                         val cx = size.width / 2f
                         val cy = size.height / 2f
@@ -636,14 +631,14 @@ fun TotalBankCard(bank: TotalBankData) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             "$soc",
-                            fontSize = 34.sp,
+                            fontSize = 30.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = socColor,
                             fontFamily = FontFamily.Monospace
                         )
                         Text(
                             "% SOC",
-                            fontSize = 10.sp,
+                            fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
                             color = TextSecondary,
                             letterSpacing = 1.sp
@@ -651,12 +646,12 @@ fun TotalBankCard(bank: TotalBankData) {
                     }
                 }
 
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(14.dp))
 
                 // RIGHT: Key metrics in a 2x2 grid
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Row(modifier = Modifier.fillMaxWidth()) {
                         MetricItem2(
@@ -687,9 +682,9 @@ fun TotalBankCard(bank: TotalBankData) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
             HorizontalDivider(color = DividerColor, thickness = 1.dp)
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Bottom row: Stored Energy
             val totalEnergyKwh = (bank.voltage * bank.remainingCapacityAh) / 1000f
