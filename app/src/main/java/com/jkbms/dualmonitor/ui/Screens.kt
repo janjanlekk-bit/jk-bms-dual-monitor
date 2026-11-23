@@ -274,6 +274,13 @@ fun DashboardScreen(
             }
         }
 
+        EnergyFlowDiagram(
+            bank = bank,
+            todayEnergy = todayEnergy,
+            b1 = b1,
+            b2 = b2
+        )
+
         TotalBankCard(bank)
 
         TodayEnergyCard(
@@ -1432,80 +1439,62 @@ fun EnergyHistoryScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Mode Switcher: BILLING CYCLE vs CALENDAR MONTH + CUTOFF BUTTON
+            // Billing & Rate Configuration (Equal 50/50 proportioned buttons)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
+                // Button 1: Billing Cutoff Day
+                Box(
                     modifier = Modifier
-                        .background(BgCardAlt, RoundedCornerShape(10.dp))
-                        .border(1.dp, CardBorder, RoundedCornerShape(10.dp))
-                        .padding(3.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF0D1E3A))
+                        .border(1.dp, AccentBlue.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                        .clickable { showCutoffDialog = true }
+                        .padding(horizontal = 10.dp, vertical = 10.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (isBillingCycleMode) AccentBlue else Color.Transparent)
-                            .clickable { isBillingCycleMode = true }
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        Text("📅", fontSize = 12.sp)
                         Text(
-                            text = "⚡ BILLING CYCLE",
+                            text = "CUTOFF: ${billingCycleStartDay}${getDaySuffix(billingCycleStartDay)}",
                             fontSize = 11.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (isBillingCycleMode) Color.White else TextMuted
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (!isBillingCycleMode) AccentBlue else Color.Transparent)
-                            .clickable { isBillingCycleMode = false }
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = "📅 CALENDAR",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (!isBillingCycleMode) Color.White else TextMuted
+                            fontWeight = FontWeight.Bold,
+                            color = AccentBlueL,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
 
-                // Billing & Rate Configuration Buttons
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF0D1E3A))
-                            .border(1.dp, AccentBlue.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                            .clickable { showCutoffDialog = true }
-                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                // Button 2: Electricity Rate (Price per kWh)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF0A1F12))
+                        .border(1.dp, SolarGreen.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                        .clickable { showCutoffDialog = true }
+                        .padding(horizontal = 10.dp, vertical = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        Text("⚡", fontSize = 12.sp)
                         Text(
-                            text = "CUTOFF: ${billingCycleStartDay}${getDaySuffix(billingCycleStartDay)}",
-                            fontSize = 10.sp,
+                            text = "${currencySymbol}${String.format(Locale.US, "%.2f", electricityPricePerKwh)}/kWh ⚙️",
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = AccentBlueL
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF0A1F12))
-                            .border(1.dp, SolarGreen.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                            .clickable { showCutoffDialog = true }
-                            .padding(horizontal = 8.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = "${currencySymbol}${String.format(Locale.US, "%.2f", electricityPricePerKwh)} ⚙️",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = SolarGreen
+                            color = SolarGreen,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }

@@ -4,29 +4,17 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.jkbms.dualmonitor.ble.BmsConnectionManager
 import com.jkbms.dualmonitor.model.BmsData
-import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalFoundationApi::class)
 class MainActivity : ComponentActivity() {
 
     private lateinit var manager: BmsConnectionManager
@@ -50,9 +38,6 @@ class MainActivity : ComponentActivity() {
                 val b1 by manager.bms1.bmsState.collectAsState()
                 val b2 by manager.bms2.bmsState.collectAsState()
 
-                val pagerState = rememberPagerState(pageCount = { 2 })
-                val coroutineScope = rememberCoroutineScope()
-
                 // 1. If inspecting battery, back gesture returns to the main dashboard
                 BackHandler(enabled = selectedBmsSlot != null) {
                     selectedBmsSlot = null
@@ -63,15 +48,8 @@ class MainActivity : ComponentActivity() {
                     showHistoryScreen = false
                 }
 
-                // 3. If on Page 2 (Energy Flow), back gesture smoothly returns to Page 1 (Telemetry)
-                BackHandler(enabled = selectedBmsSlot == null && !showHistoryScreen && pagerState.currentPage == 1) {
-                    coroutineScope.launch {
-                        pagerState.animateScrollToPage(0)
-                    }
-                }
-
-                // 4. If on main homescreen (Page 1), back gesture asks if the user wants to exit
-                BackHandler(enabled = selectedBmsSlot == null && !showHistoryScreen && pagerState.currentPage == 0 && !showExitDialog) {
+                // 3. If on main dashboard, back gesture asks if the user wants to exit
+                BackHandler(enabled = selectedBmsSlot == null && !showHistoryScreen && !showExitDialog) {
                     showExitDialog = true
                 }
 
@@ -89,65 +67,11 @@ class MainActivity : ComponentActivity() {
                             onBack = { showHistoryScreen = false }
                         )
                     } else {
-                        Column(modifier = Modifier.fillMaxSize()) {
-                            // Top Page Navigation Bar
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                                    .background(Color(0xFF0D1526), RoundedCornerShape(12.dp))
-                                    .border(BorderStroke(1.dp, Color(0xFF1E3A5F)), RoundedCornerShape(12.dp))
-                                    .padding(4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                val pages = listOf("📊  TELEMETRY", "⚡  ENERGY FLOW")
-                                pages.forEachIndexed { index, title ->
-                                    val isSelected = pagerState.currentPage == index
-                                    val bgColor = if (isSelected) Color(0xFF2979FF) else Color.Transparent
-                                    val textColor = if (isSelected) Color.White else Color(0xFF8F9BB3)
-
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(bgColor)
-                                            .clickable {
-                                                coroutineScope.launch {
-                                                    pagerState.animateScrollToPage(index)
-                                                }
-                                            }
-                                            .padding(vertical = 10.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = title,
-                                            style = MaterialTheme.typography.labelMedium,
-                                            fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
-                                            color = textColor,
-                                            letterSpacing = if (isSelected) 0.5.sp else 0.sp
-                                        )
-                                    }
-                                }
-                            }
-
-                            // Horizontal Swipe Pager
-                            HorizontalPager(
-                                state = pagerState,
-                                modifier = Modifier.fillMaxSize().weight(1f)
-                            ) { page ->
-                                when (page) {
-                                    0 -> DashboardScreen(
-                                        manager = manager,
-                                        onInspectCells = { bms -> selectedBmsSlot = if (bms.id == "B2") "B2" else "B1" },
-                                        onViewHistory = { showHistoryScreen = true }
-                                    )
-                                    1 -> EnergyFlowScreen(
-                                        manager = manager,
-                                        onInspectCells = { bms -> selectedBmsSlot = if (bms.id == "B2") "B2" else "B1" }
-                                    )
-                                }
-                            }
-                        }
+                        DashboardScreen(
+                            manager = manager,
+                            onInspectCells = { bms -> selectedBmsSlot = if (bms.id == "B2") "B2" else "B1" },
+                            onViewHistory = { showHistoryScreen = true }
+                        )
                     }
 
                     if (showExitDialog) {
