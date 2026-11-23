@@ -195,7 +195,7 @@ fun EnergyFlowDiagram(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(360.dp),
+            .height(350.dp),
         colors = CardDefaults.cardColors(containerColor = BgCard),
         border = BorderStroke(1.dp, CardBorder),
         shape = RoundedCornerShape(20.dp)
@@ -217,7 +217,7 @@ fun EnergyFlowDiagram(
                 val inverterRightX = width * 0.5f + 44.dp.toPx()
 
                 // Clean gap between icon and conduit line
-                val solarStart = Offset(leftColumnCenterX, 80.dp.toPx())
+                val solarStart = Offset(leftColumnCenterX, 82.dp.toPx())
                 val solarCorner = Offset(leftColumnCenterX, height * 0.44f)
                 val solarEnd = Offset(inverterLeftX, height * 0.44f)
 
@@ -225,8 +225,8 @@ fun EnergyFlowDiagram(
                 val houseCorner = Offset(rightColumnCenterX, height * 0.44f)
                 val houseEnd = Offset(inverterRightX, height * 0.44f)
 
-                // Distinct 24dp gap above battery top cap
-                val batteryStart = Offset(leftColumnCenterX, height - 116.dp.toPx())
+                // Distinct gap above battery top cap
+                val batteryStart = Offset(leftColumnCenterX, height - 108.dp.toPx())
                 val batteryCorner = Offset(leftColumnCenterX, height * 0.56f)
                 val batteryEnd = Offset(inverterLeftX, height * 0.56f)
 

@@ -1434,64 +1434,37 @@ fun EnergyHistoryScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Billing & Rate Configuration (Equal 50/50 proportioned buttons)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
+            // Billing & Tariff Settings Button (Unified single button)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF0D1E3A))
+                    .border(1.dp, AccentBlue.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                    .clickable { showCutoffDialog = true }
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                contentAlignment = Alignment.Center
             ) {
-                // Button 1: Billing Cutoff Day
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFF0D1E3A))
-                        .border(1.dp, AccentBlue.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
-                        .clickable { showCutoffDialog = true }
-                        .padding(horizontal = 10.dp, vertical = 10.dp),
-                    contentAlignment = Alignment.Center
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text("📅", fontSize = 12.sp)
-                        Text(
-                            text = "CUTOFF: ${billingCycleStartDay}${getDaySuffix(billingCycleStartDay)}",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = AccentBlueL,
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
-                }
-
-                // Button 2: Electricity Rate (Price per kWh)
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFF0A1F12))
-                        .border(1.dp, SolarGreen.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
-                        .clickable { showCutoffDialog = true }
-                        .padding(horizontal = 10.dp, vertical = 10.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text("⚡", fontSize = 12.sp)
-                        Text(
-                            text = "${currencySymbol}${String.format(Locale.US, "%.2f", electricityPricePerKwh)}/kWh ⚙️",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = SolarGreen,
-                            maxLines = 1,
-                            softWrap = false
-                        )
-                    }
+                    Text("📅", fontSize = 12.sp)
+                    Text(
+                        text = "CUTOFF: ${billingCycleStartDay}${getDaySuffix(billingCycleStartDay)}",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = AccentBlueL
+                    )
+                    Text("•", color = TextMuted, fontSize = 12.sp)
+                    Text("⚡", fontSize = 12.sp)
+                    Text(
+                        text = "${currencySymbol}${String.format(Locale.US, "%.2f", electricityPricePerKwh)}/kWh",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = SolarGreen
+                    )
+                    Text("⚙️", fontSize = 11.sp)
                 }
             }
 
@@ -1643,7 +1616,7 @@ fun EnergyHistoryScreen(
                         )
                     }
 
-                    // Two prominent metric boxes: Charged & Consumed (Symmetrical)
+                    // Two prominent metric boxes: Charged & Consumed (Symmetrical & Center-aligned)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1657,35 +1630,38 @@ fun EnergyHistoryScreen(
                                 .fillMaxHeight()
                                 .background(Color(0xFF0A1F12), RoundedCornerShape(12.dp))
                                 .border(1.dp, SolarGreen.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
-                                .padding(12.dp)
+                                .padding(12.dp),
+                            contentAlignment = Alignment.Center
                         ) {
                             Column(
-                                modifier = Modifier.fillMaxHeight(),
-                                verticalArrangement = Arrangement.SpaceBetween
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Column {
-                                    Text(
-                                        text = "SOLAR CHARGED",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = SolarGreen,
-                                        fontWeight = FontWeight.Bold,
-                                        letterSpacing = 0.8.sp
-                                    )
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Text(
-                                        text = formatEnergy(totalChargedKwh, prefix = "+"),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = SolarGreen,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                    Text(
-                                        text = String.format(Locale.US, "+%.1f Ah", totalChargedAh),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = SolarGreenL,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
+                                Text(
+                                    text = "SOLAR CHARGED",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = SolarGreen,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.8.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = formatEnergy(totalChargedKwh, prefix = "+"),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = SolarGreen,
+                                    fontFamily = FontFamily.Monospace,
+                                    textAlign = TextAlign.Center
+                                )
+                                Text(
+                                    text = String.format(Locale.US, "+%.1f Ah", totalChargedAh),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = SolarGreenL,
+                                    fontFamily = FontFamily.Monospace,
+                                    textAlign = TextAlign.Center
+                                )
                             }
                         }
 
@@ -1696,35 +1672,38 @@ fun EnergyHistoryScreen(
                                 .fillMaxHeight()
                                 .background(Color(0xFF1F0F05), RoundedCornerShape(12.dp))
                                 .border(1.dp, LoadOrange.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
-                                .padding(12.dp)
+                                .padding(12.dp),
+                            contentAlignment = Alignment.Center
                         ) {
                             Column(
-                                modifier = Modifier.fillMaxHeight(),
-                                verticalArrangement = Arrangement.SpaceBetween
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Column {
-                                    Text(
-                                        text = "LOAD CONSUMED",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = LoadOrange,
-                                        fontWeight = FontWeight.Bold,
-                                        letterSpacing = 0.8.sp
-                                    )
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Text(
-                                        text = formatEnergy(totalDischargedKwh, prefix = "-"),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = LoadOrange,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                    Text(
-                                        text = String.format(Locale.US, "-%.1f Ah", totalDischargedAh),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = LoadOrangeL,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
+                                Text(
+                                    text = "LOAD CONSUMED",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = LoadOrange,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.8.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = formatEnergy(totalDischargedKwh, prefix = "-"),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = LoadOrange,
+                                    fontFamily = FontFamily.Monospace,
+                                    textAlign = TextAlign.Center
+                                )
+                                Text(
+                                    text = String.format(Locale.US, "-%.1f Ah", totalDischargedAh),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = LoadOrangeL,
+                                    fontFamily = FontFamily.Monospace,
+                                    textAlign = TextAlign.Center
+                                )
                             }
                         }
                     }
@@ -1929,7 +1908,8 @@ fun EnergyHistoryScreen(
                             modifier = Modifier.weight(1.0f),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
-                            color = TextSecondary
+                            color = TextSecondary,
+                            textAlign = TextAlign.Center
                         )
                         Text(
                             text = "Solar Charged",
@@ -1937,7 +1917,7 @@ fun EnergyHistoryScreen(
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = SolarGreen,
-                            textAlign = TextAlign.End
+                            textAlign = TextAlign.Center
                         )
                         Text(
                             text = "Load Consumed",
@@ -1945,7 +1925,7 @@ fun EnergyHistoryScreen(
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = LoadOrange,
-                            textAlign = TextAlign.End
+                            textAlign = TextAlign.Center
                         )
                     }
 
@@ -1985,18 +1965,19 @@ fun EnergyHistoryScreen(
                                         .padding(horizontal = 14.dp, vertical = 11.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    // Column 1: Device time (e.g. 11-07)
-                                    Row(
+                                    // Column 1: Device time (Centered with TODAY badge underneath)
+                                    Column(
                                         modifier = Modifier.weight(1.0f),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(2.dp)
                                     ) {
                                         Text(
                                             text = displayDate,
                                             style = MaterialTheme.typography.bodyMedium,
                                             fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
                                             color = if (isToday) Color(0xFF64FFDA) else Color.White,
-                                            fontFamily = FontFamily.Monospace
+                                            fontFamily = FontFamily.Monospace,
+                                            textAlign = TextAlign.Center
                                         )
                                         if (isToday) {
                                             Box(
@@ -2004,15 +1985,20 @@ fun EnergyHistoryScreen(
                                                     .background(Color(0xFF00E676).copy(alpha = 0.2f), RoundedCornerShape(4.dp))
                                                     .padding(horizontal = 4.dp, vertical = 1.dp)
                                             ) {
-                                                Text("TODAY", fontSize = 8.sp, color = Color(0xFF00E676), fontWeight = FontWeight.Bold)
+                                                Text(
+                                                    text = "TODAY",
+                                                    fontSize = 8.sp,
+                                                    color = Color(0xFF00E676),
+                                                    fontWeight = FontWeight.Bold
+                                                )
                                             }
                                         }
                                     }
 
-                                    // Column 2: Solar Charged
+                                    // Column 2: Solar Charged (Center-aligned)
                                     Column(
                                         modifier = Modifier.weight(1.1f),
-                                        horizontalAlignment = Alignment.End
+                                        horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
                                         if (item.chargedKwh <= 0.0005f && item.chargedAh <= 0.05f) {
                                             Text(
@@ -2020,7 +2006,7 @@ fun EnergyHistoryScreen(
                                                 style = MaterialTheme.typography.bodyMedium,
                                                 color = Color(0xFF78909C),
                                                 fontFamily = FontFamily.Monospace,
-                                                textAlign = TextAlign.End
+                                                textAlign = TextAlign.Center
                                             )
                                         } else {
                                             Text(
@@ -2029,22 +2015,22 @@ fun EnergyHistoryScreen(
                                                 fontWeight = FontWeight.Bold,
                                                 color = Color(0xFF00E676),
                                                 fontFamily = FontFamily.Monospace,
-                                                textAlign = TextAlign.End
+                                                textAlign = TextAlign.Center
                                             )
                                             Text(
                                                 text = String.format(Locale.US, "+%.1f Ah", item.chargedAh),
                                                 fontSize = 10.sp,
                                                 color = Color(0xFFA5D6A7),
                                                 fontFamily = FontFamily.Monospace,
-                                                textAlign = TextAlign.End
+                                                textAlign = TextAlign.Center
                                             )
                                         }
                                     }
 
-                                    // Column 3: Load Consumed
+                                    // Column 3: Load Consumed (Center-aligned)
                                     Column(
                                         modifier = Modifier.weight(1.1f),
-                                        horizontalAlignment = Alignment.End
+                                        horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
                                         if (item.dischargedKwh <= 0.0005f && item.dischargedAh <= 0.05f) {
                                             Text(
@@ -2052,7 +2038,7 @@ fun EnergyHistoryScreen(
                                                 style = MaterialTheme.typography.bodyMedium,
                                                 color = Color(0xFF78909C),
                                                 fontFamily = FontFamily.Monospace,
-                                                textAlign = TextAlign.End
+                                                textAlign = TextAlign.Center
                                             )
                                         } else {
                                             Text(
@@ -2061,14 +2047,14 @@ fun EnergyHistoryScreen(
                                                 fontWeight = FontWeight.Bold,
                                                 color = Color(0xFFFF9100),
                                                 fontFamily = FontFamily.Monospace,
-                                                textAlign = TextAlign.End
+                                                textAlign = TextAlign.Center
                                             )
                                             Text(
                                                 text = String.format(Locale.US, "-%.1f Ah", item.dischargedAh),
                                                 fontSize = 10.sp,
                                                 color = Color(0xFFFFCC80),
                                                 fontFamily = FontFamily.Monospace,
-                                                textAlign = TextAlign.End
+                                                textAlign = TextAlign.Center
                                             )
                                             if (item.dischargedKwh > 0.005f) {
                                                 Text(
@@ -2077,7 +2063,7 @@ fun EnergyHistoryScreen(
                                                     fontWeight = FontWeight.Bold,
                                                     color = Color(0xFF64FFDA),
                                                     fontFamily = FontFamily.Monospace,
-                                                    textAlign = TextAlign.End
+                                                    textAlign = TextAlign.Center
                                                 )
                                             }
                                         }
